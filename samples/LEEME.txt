@@ -1,0 +1,8 @@
+Pon aquí grabaciones reales para reemplazar los sonidos sintetizados de la batería.
+El nombre del archivo tiene que ser el de la pieza, en .wav (16 o 24 bits, cualquier frecuencia):
+
+  kick.wav  kick2.wav  snare.wav  tom_hi.wav  tom_mid.wav  tom_floor.wav
+  hat.wav  hat_open.wav  ride.wav  ride_bell.wav  crash.wav
+
+Ejemplo: descarga un ride con licencia CC0 (dominio público) de freesound.org,
+guárdalo como ride.wav aquí y vuelve a abrir la app.

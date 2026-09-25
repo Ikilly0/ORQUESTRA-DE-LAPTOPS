@@ -1,0 +1,14 @@
+# entornos virtuales
+.venv/
+.venv312/
+.venv-linux/
+__pycache__/
+*.pyc
+# datos personales de cada computador (se crean al usar la app)
+profiles.json
+settings.json
+# logs y audios de prueba
+*.log
+*.wav
+recordings/
+!samples/*.wav
