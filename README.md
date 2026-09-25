@@ -1,6 +1,6 @@
 # Orquesta de laptops: Keyboard Instruments
 
-> **T1: Propuesta de obra *Orden / Desorden*** → [`T1-propuesta-de-obra/`](T1-propuesta-de-obra/README.md) (referentes, propuesta, material sonoro web con render, declaración de uso de IA).
+> **T1: Propuesta de obra *Order*** → [`T1-propuesta-de-obra/`](T1-propuesta-de-obra/README.md): el PDF de la tarea, los referentes (CliX y Freesia), la propuesta y un render de 75 s hecho con `render_tema.py`.
 
 App para tocar instrumentos **en vivo con el teclado del computador**, pensada para una orquesta de laptops:
 cada persona toca una parte de un tema (sacada de un MIDI) y la app muestra las notas que vienen cayendo.
