@@ -1509,12 +1509,12 @@ class PlayWindow(tk.Toplevel):
             what = (f"la pista \"{self.auto_name}\" ({len(self.auto_events)} notas)" if self.auto_events
                     else "los acordes")
             self.pattern_label.config(text=("Automático: la app toca " if self.auto else "Manual: sigues ") + what +
-                                      ".  Empezar / Detener;  Desde = saltar a un compás.")
+                                      ".  Empezar / Detener;  Desde = saltar a un compás." +
+                                      ("  Mantén una tecla = redoble." if self.drums else ""))
             return
         if not pat or self.drums:
             self.pattern_label.config(text="Libre: sin patrón fijo. Escucha y elige." if not self.drums
-                                      else "Lleva el tiempo de la banda. Mira el recuadro del acorde para los "
-                                           "cambios de compás.")
+                                      else "Lleva el tiempo de la banda. Mantén una tecla = redoble al tempo.")
             return
         # pattern steps are positions in the chord's tones, low to high (1 = lowest note you have)
         target = self.tones[pat[self.pat_pos % len(pat)] - 1]
@@ -1826,8 +1826,8 @@ class PlayWindow(tk.Toplevel):
     # ---- notes ------------------------------------------------------------
     def _start(self, tag, i):
         s = self.slots[i]
-        if self.drums:
-            self.engine.note_on(tag, self.ins, piece=s["piece"])
+        if self.drums:  # holding the key = a roll (redoble) in 16ths at the song's tempo
+            self.engine.note_on(tag, self.ins, piece=s["piece"], roll=self._roll_samples())
         else:
             freq = freq_of(self.slot_midis[i] + 12 * self.octave_shift)
             self.engine.note_on(tag, self.ins, freq=freq, palm_mute=self.palm, power=self.power_var.get())
@@ -1835,6 +1835,22 @@ class PlayWindow(tk.Toplevel):
         if self.song is not None and self._pattern() and not self.drums:
             self.pat_pos += 1
             self._update_pattern()
+
+    def _roll_bpm(self):
+        """Tempo for the drum roll: the song's tempo right now (with the BPM box), else the metronome's."""
+        try:
+            if self.song is not None:
+                now = self._song_seconds_now() if self.running else None
+                if now is not None:
+                    return self.song.bpm_at(self.song.seconds_to_beat(now)) * self.speed
+                return float(self.song_bpm_var.get())
+            return float(self.bpm_var.get())
+        except (AttributeError, ValueError, TypeError):
+            return float(self.engine.metro_bpm or 120)
+
+    def _roll_samples(self):
+        bpm = max(40.0, min(300.0, self._roll_bpm()))
+        return int(SR * 60.0 / bpm / 4)  # semicorcheas (16ths)
 
     def _stop(self, tag, i):
         self.engine.note_off(tag)

@@ -598,6 +598,46 @@ class BassGuitar(Instrument):
                         drive=2.5, cab_cutoff=2200, level=0.8)
 
 
+class RollVoice:
+    """Drum roll: the first hit at once, then one hit every `interval` samples until the key is released.
+    Sample-accurate (hits are placed inside the audio blocks); every hit rings out after the release."""
+
+    ACCENTS = (1.0, 0.72, 0.84, 0.68)  # a little accent pattern so the roll doesn't sound like a machine gun
+
+    def __init__(self, make_hit, interval):
+        self.make_hit = make_hit
+        self.interval = max(64, interval)
+        self.next = 0          # samples until the next hit, from the start of the next block
+        self.count = 0
+        self.hits = []         # [buffer, read position]; a negative position = starts later in the block
+        self.released = False
+        self.done = False
+
+    def release(self):
+        self.released = True
+
+    def render(self, n):
+        if not self.released:
+            t = self.next
+            while t < n:
+                gain = self.ACCENTS[self.count % len(self.ACCENTS)] * (1.0 if self.count == 0 else 0.85)
+                self.hits.append([self.make_hit() * gain, -t])
+                self.count += 1
+                t += self.interval
+            self.next = t - n
+        out = np.zeros(n)
+        for h in self.hits:
+            buf, pos = h
+            src0, src1 = max(pos, 0), min(len(buf), pos + n)
+            if src1 > src0:
+                dst = src0 - pos
+                out[dst:dst + (src1 - src0)] += buf[src0:src1]
+            h[1] = pos + n
+        self.hits = [h for h in self.hits if h[1] < len(h[0])]
+        self.done = self.released and not self.hits
+        return out
+
+
 class DrumKit(Instrument):
     id = "drums"
     name = "Drum kit"
@@ -615,7 +655,7 @@ class DrumKit(Instrument):
 
     _cache = {}
 
-    def voice(self, piece="kick", **_):
+    def _hit(self, piece):
         # synthesising a hit takes a few ms, so keep 4 variations of each piece and reuse them
         variants = self._cache.setdefault(piece, [])
         if not variants:
@@ -624,10 +664,14 @@ class DrumKit(Instrument):
                 variants += [sample] * 4
         if len(variants) < 4:
             variants.append(DRUM_PIECES[piece][1]())
-            buf = variants[-1]
-        else:
-            buf = variants[np.random.randint(4)]
-        return BufferVoice(buf)
+            return variants[-1]
+        return variants[np.random.randint(4)]
+
+    def voice(self, piece="kick", roll=None, **_):
+        """One hit. With roll = N samples: a roll (redoble), one hit every N samples while the key is held."""
+        if roll:
+            return RollVoice(lambda: self._hit(piece), int(roll))
+        return BufferVoice(self._hit(piece))
 
     @classmethod
     def warm(cls, pieces=None):

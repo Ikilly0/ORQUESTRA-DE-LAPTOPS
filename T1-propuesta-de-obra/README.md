@@ -132,6 +132,7 @@ Cada estación **toca en vivo** su pista. Tiene que decidir y ejecutar en tiempo
   - *palm mute*, manteniendo Espacio;
   - *power chords*, con Enter;
   - cambio de **octava**, con ↑/↓;
+  - **redoble** (batería): mantener la tecla repite el golpe en semicorcheas, al tempo de la canción;
   - **agregar o quitar notas** a su teclado, con los botones «+ nota grave» y «+ nota aguda».
 - **Improvisar** en la sección D.
 
@@ -245,7 +246,7 @@ Cada estación suena por **su propio parlante** (el de su laptop, o el de la est
   - las teclas son las 19 notas que esa pista más usa, con su octava real;
   - en *Order*, la batería se divide en **tambores** y **platillos**, y las dos guitarras que se turnan se unen en **Guitarra 2 + solista**.
 - **Tocar instrumento:**
-  - **Manual:** tocas tú, con las notas que caen hacia un teclado dibujado. Se puede agregar o quitar notas, usar *palm mute*, *power chords* y octava, y saltar de acorde con ←/→.
+  - **Manual:** tocas tú, con las notas que caen hacia un teclado dibujado. Se puede agregar o quitar notas, usar *palm mute*, *power chords* y octava, y saltar de acorde con ←/→. En la batería, mantener una tecla hace un **redoble** en semicorcheas al tempo actual de la canción.
   - **Automático:** para practicar; la app toca la pista al tempo elegido (50 %, 75 % o 100 %).
 - **Configurar instrumentos:** nombre, sonido, cantidad de teclas, nota de cada tecla y distribución del teclado (A…L, luego Q…P).
 - **Escuchar tema completo:** la app toca todas las pistas juntas, como una mesa de mezcla. Hay una columna por instrumento con «Suena» y volumen (se guarda). Sirve para que el ensamble escuche la obra entera antes de repartirla.
