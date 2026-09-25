@@ -1,5 +1,7 @@
 # Orquesta de laptops: Keyboard Instruments
 
+> **T1: Propuesta de obra *Orden / Desorden*** → [`T1-propuesta-de-obra/`](T1-propuesta-de-obra/README.md) (referentes, propuesta, material sonoro web con render, declaración de uso de IA).
+
 App para tocar instrumentos **en vivo con el teclado del computador**, pensada para una orquesta de laptops:
 cada persona toca una parte de un tema (sacada de un MIDI) y la app muestra las notas que vienen cayendo.
 Funciona en **Windows 10** y **Linux Mint / Ubuntu** (Python 3.10+, Tkinter, numpy, sounddevice, mido).

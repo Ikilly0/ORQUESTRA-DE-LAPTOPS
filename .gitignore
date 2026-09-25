@@ -12,3 +12,4 @@ settings.json
 *.wav
 recordings/
 !samples/*.wav
+!T1-propuesta-de-obra/material/render/*.wav

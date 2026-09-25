@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orden / Desorden: estación</title>
+<style>
+  :root { --bg: #1e1f24; --panel: #2a2c33; --fg: #e8e8ea; --muted: #9a9ca5; --accent: #3fb66b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh; }
+  header { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 10px 16px; background: var(--panel); }
+  header h1 { font-size: 18px; margin: 0 12px 0 0; }
+  label { color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  select, input[type=number], button { background: #3a3d47; color: var(--fg); border: 1px solid #4a4d57; border-radius: 6px; padding: 6px 8px; font: inherit; }
+  button { cursor: pointer; }
+  #start { background: #2f7d4f; font-weight: 600; min-width: 170px; }
+  #info { padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 6px 24px; }
+  #status { font-weight: 600; font-size: 17px; }
+  #sectionText, #roleInfo { color: var(--muted); }
+  #hw { flex: 1; width: 100%; min-height: 300px; display: block; }
+  #directorPanel { padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--panel); }
+  footer { padding: 8px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; background: var(--panel); }
+  footer a { color: #7fd3a0; margin-left: 8px; }
+  audio { height: 32px; vertical-align: middle; margin-left: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Orden / Desorden</h1>
+  <label>Estación <select id="role"></select></label>
+  <label>Sección <select id="section"></select></label>
+  <label>BPM <input id="bpm" type="number" min="60" max="220" style="width:70px"></label>
+  <button id="start">▶ Empezar (Enter)</button>
+  <label>Mi volumen <input id="vol" type="range" min="0" max="150" value="100"></label>
+  <label><input id="fondo" type="checkbox"> Fondo (resto de la banda, para ensayar)</label>
+  <label>vol. fondo <input id="fondoVol" type="range" min="0" max="100" value="40"></label>
+  <label><input id="click" type="checkbox"> Clic</label>
+</header>
+<div id="info">
+  <span id="status"></span>
+  <span id="roleInfo"></span>
+  <span id="sectionText"></span>
+</div>
+<div id="directorPanel" style="display:none">
+  <span>Cartas:</span><span id="cards" style="display:flex;gap:6px;flex-wrap:wrap"></span>
+  <label>para <select id="target"></select></label>
+</div>
+<canvas id="hw"></canvas>
+<footer>
+  <button id="render">Render de la obra en miniatura (~70 s, WAV)</button>
+  <span id="renderStatus" style="color:var(--muted)">Clic en la página antes de tocar (el navegador lo exige para sonar). ←/→ corrigen tu reloj ±30 ms.</span>
+</footer>
+<script src="order-data.js"></script>
+<script src="synth.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
