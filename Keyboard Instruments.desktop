@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Keyboard Instruments
+Comment=Orquesta de laptops: toca Order con el teclado
+Exec=bash -c 'cd "/home/alvaro/Desktop/OrquestradeLaptopsSesss" && bash run_linux.sh; echo; read -p "Enter para cerrar..."'
+Path=/home/alvaro/Desktop/OrquestradeLaptopsSesss
+Icon=audio-x-generic
+Terminal=true
+Categories=AudioVideo;Audio;

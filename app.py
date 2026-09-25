@@ -41,12 +41,13 @@ import numpy as np  # noqa: E402
 from bisect import bisect_left  # noqa: E402
 from tkinter import ttk  # noqa: E402
 
-from audio import Engine  # noqa: E402
+from audio import Engine, SequenceVoice  # noqa: E402
 import threading  # noqa: E402
 from instruments import DRUM_GROUPS, DRUM_PIECES, INSTRUMENTS, SR, DrumKit, drum_group  # noqa: E402
 from profiles import (KEY_POSITIONS, LAYOUTS, MAX_KEYS, theme_key, theme_profiles, default_profiles, free_key, drum_part_profiles, merged_profile, theme_merges,
                       track_pitch_counts, all_notes, note_slots,  # noqa: E402
-                      is_drums, load_profiles, piano_layout, save_profiles, scale_notes)
+                      is_drums, load_profiles, piano_layout, save_profiles, scale_notes,
+                      profile_runs, strip_run_notes)
 from song import (GM_DRUMS, INTERVAL_LABELS, ROLES, chord_intervals, load_song, chord_name, midi_tracks,  # noqa: E402
                   track_events)
 
@@ -330,6 +331,7 @@ class MainMenu(tk.Tk):
         self._split_theme_drums()
         self._merge_theme_tracks()
         self._complete_theme_notes()
+        self._strip_run_notes()
         self.profiles = self._visible()
         self.show_menu()
 
@@ -382,6 +384,20 @@ class MainMenu(tk.Tk):
             self.all_profiles = [p for p in self.all_profiles if p not in parts]
             self.all_profiles.insert(min(at, len(self.all_profiles)), merged)
             changed = True
+        if changed:
+            save_profiles(PROFILES_FILE, self.all_profiles)
+
+    def _strip_run_notes(self):
+        """Instruments with bajadas (Shift + Espacio): the notes only used in them lose their key."""
+        if not self.theme_path or not self.theme_key:
+            return
+        changed = False
+        for p in self.all_profiles:
+            if p.get("theme") == self.theme_key:
+                try:
+                    changed |= strip_run_notes(self.theme_path, p)
+                except Exception as exc:
+                    print("bajadas:", exc, flush=True)
         if changed:
             save_profiles(PROFILES_FILE, self.all_profiles)
 
@@ -1151,6 +1167,18 @@ class PlayWindow(tk.Toplevel):
                 self.auto_events.append((song.beat_to_seconds(b0 - song.offset),
                                          song.beat_to_seconds(b1 - song.offset), pitch))
             self.auto_starts = [ev[0] for ev in self.auto_events]
+        # bajadas: fast runs played with Shift + Espacio (only for the instrument's own tracks)
+        self.runs = []  # [{"on": s, "off": s, "notes": [(beat offset, beats, pitch)]}]
+        if self.track is not None and self.track == profile.get("track"):
+            try:
+                for run in profile_runs(chooser.menu.theme_path, profile):
+                    b0 = run[0][0]
+                    self.runs.append({
+                        "on": song.beat_to_seconds(b0 - song.offset),
+                        "off": song.beat_to_seconds(run[-1][1] - song.offset),
+                        "notes": [(e[0] - b0, e[1] - e[0], e[2]) for e in run]})
+            except Exception as exc:
+                print("bajadas:", exc, flush=True)
         if self.band:
             self._load_band(chooser.menu, profile)
         if self.drums or self.auto_drums or self.band:  # synthesise the drum hits now, not on the first hit
@@ -1288,6 +1316,10 @@ class PlayWindow(tk.Toplevel):
             self.palm_label = tk.Label(tech, text="PALM MUTE  (mantén Espacio)", bg=PANEL, fg=MUTED,
                                        padx=10, pady=4, font=("TkDefaultFont", 10, "bold"))
             self.palm_label.pack(side="left", padx=(0, 8))
+        if self.runs:
+            self.run_label = tk.Label(tech, text="BAJADA  (Shift + Espacio)", bg=PANEL, fg=MUTED,
+                                      padx=10, pady=4, font=("TkDefaultFont", 10, "bold"))
+            self.run_label.pack(side="left", padx=(0, 8))
         if "power" in self.ins.techniques:
             ttk.Checkbutton(tech, text="Power chords  (Enter)", variable=self.power_var,
                             takefocus=False, command=self._refocus).pack(side="left", padx=(0, 8))
@@ -1780,7 +1812,19 @@ class PlayWindow(tk.Toplevel):
         drums = self.drums or self.auto_drums
         lo = bisect_left(self.auto_starts, now_song - self.max_dur)
         hi = bisect_left(self.auto_starts, now_song + span)
+        for r in self.runs:  # bajada: one wide block, played with Shift + Espacio
+            if r["off"] < now_song or r["on"] > now_song + span:
+                continue
+            y_on = y_hit - (r["on"] - now_song) * pps
+            y_off = min(y_on - 28, y_hit - (r["off"] - now_song) * pps)
+            active = r["on"] <= now_song < r["off"]
+            hw.create_rectangle(4, max(0, y_off), w - 4, min(y_hit, y_on), width=0,
+                                fill="#ffffff" if active else self.ins.color)
+            hw.create_text(w / 2, (max(0, y_off) + min(y_hit, y_on)) / 2, text="BAJADA:  Shift + Espacio",
+                           fill="#16171b", font=("TkDefaultFont", 16, "bold"))
         for on, off, pitch in self.auto_events[lo:hi]:
+            if self.runs and any(r["on"] - 1e-6 <= on <= r["off"] for r in self.runs):
+                continue  # drawn as the bajada block above
             if drums:  # hits: short blocks, whatever the MIDI length says
                 off = on + 0.09
             if off < now_song:
@@ -1937,6 +1981,24 @@ class PlayWindow(tk.Toplevel):
             self.pat_pos += 1
             self._update_pattern()
 
+    def _play_run(self):
+        """Plays the bajada (the nearest one in the song) at the song's current tempo."""
+        now = self._song_seconds_now() if self.running else None
+        run = self.runs[0]
+        if now is not None:
+            run = min(self.runs, key=lambda r: abs(r["on"] - now))
+        spb = 60.0 / max(20.0, self._roll_bpm())  # seconds per beat right now
+        notes = []
+        for b, dur, pitch in run["notes"]:
+            voice = self.ins.voice(freq=freq_of(pitch + 12 * self.octave_shift), palm_mute=False, power=False)
+            notes.append((int(b * spb * SR), max(1, int(dur * spb * SR)), voice))
+        self.engine.voice_on(("run",), SequenceVoice(notes))
+        label = getattr(self, "run_label", None)
+        if label is not None:
+            label.config(bg=self.ins.color, fg=FG)
+            self.after(int(1000 * (run["notes"][-1][0] + run["notes"][-1][1]) * spb) + 100,
+                       lambda: label.winfo_exists() and label.config(bg=PANEL, fg=MUTED))
+
     def _roll_bpm(self):
         """Tempo for the drum roll: the song's tempo right now (with the BPM box), else the metronome's."""
         try:
@@ -1969,6 +2031,9 @@ class PlayWindow(tk.Toplevel):
         if k in self.keymap:
             self.held.add(k)
             self._start(("key", k), self.keymap[k])
+        elif k == "space" and self.runs and event.state & 0x1:  # Shift + Espacio: the bajada
+            self.held.add(k)
+            self._play_run()
         elif k == "space" and "palm_mute" in self.ins.techniques:
             self.held.add(k)
             self._set_palm(True)

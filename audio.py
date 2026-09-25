@@ -44,6 +44,45 @@ class DelayedVoice:
         return out
 
 
+class SequenceVoice:
+    """Several notes one after another as a single voice: [(start_sample, length_samples, voice)].
+    Used for the bajadas (Shift + Espacio): the whole run plays from one key press."""
+
+    def __init__(self, notes):
+        self.notes = sorted(notes, key=lambda n: n[0])
+        self.t = 0
+        self.active = []  # [(end_sample, voice)]
+        self.next = 0
+        self.done = False
+
+    def release(self):
+        pass  # the run always finishes (like a real one: once started, it falls to the end)
+
+    def render(self, n):
+        out = np.zeros(n)
+        end = self.t + n
+        while self.next < len(self.notes) and self.notes[self.next][0] < end:
+            start, length, voice = self.notes[self.next]
+            self.next += 1
+            self.active.append([start + length, DelayedVoice(voice, max(0, start - self.t))])
+        for item in self.active:
+            stop, v = item
+            if stop is not None and stop < end:  # its release falls in this block
+                k = max(0, stop - self.t)
+                if k:
+                    out[:k] += v.render(k)
+                v.release()
+                item[0] = None  # released: it only rings out now
+                if n - k:
+                    out[k:] += v.render(n - k)
+            else:
+                out += v.render(n)
+        self.active = [item for item in self.active if not item[1].done]
+        self.t = end
+        self.done = self.next >= len(self.notes) and not self.active
+        return out
+
+
 def _click(freq):
     t = np.arange(int(0.03 * SR)) / SR
     return np.sin(2 * np.pi * freq * t) * np.exp(-t / 0.006)
@@ -134,7 +173,10 @@ class Engine:
 
     # ---- notes ------------------------------------------------------------
     def note_on(self, tag, instrument, **params):
-        voice = instrument.voice(**params)
+        self.voice_on(tag, instrument.voice(**params))
+
+    def voice_on(self, tag, voice):
+        """Starts an already built voice (e.g. a SequenceVoice) under a tag."""
         with self.lock:
             for t, v in self.voices:
                 if t == tag:

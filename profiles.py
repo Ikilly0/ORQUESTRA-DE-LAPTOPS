@@ -273,12 +273,76 @@ def merged_profile(path, name, tracks, sound, keys=None):
     # every note that is important for one of the tracks (>= 5% of it: the whole short solo), then the
     # most played notes overall
     top = all_notes(counts)  # every note both tracks play, one key each
-    return {"name": name, "sound": sound, "theme": theme_key(path), "track": tracks[0], "all_notes": True,
-            "extra_tracks": list(tracks[1:]), "slots": note_slots(top)}
+    out = {"name": name, "sound": sound, "theme": theme_key(path), "track": tracks[0], "all_notes": True,
+           "extra_tracks": list(tracks[1:]), "slots": note_slots(top)}
+    strip_run_notes(path, out)  # notes only used in a bajada (Shift + Espacio) get no key
+    return out
 
 
 def theme_merges(path):
     return THEME_MERGES.get(theme_key(path), [])
+
+
+# Fast runs ("bajadas") that one instrument plays with a single gesture, Shift + Espacio, instead of
+# note by note. theme -> instrument names. The runs themselves are found in the MIDI: chromatic
+# descents of RUN_MIN_NOTES notes or more, each note right after the previous one.
+THEME_RUNS = {
+    "heaven pierce her - order.mid": ["Guitarra 2 + solista"],
+}
+RUN_MIN_NOTES = 12
+RUN_MAX_GAP = 0.25  # beats between two notes of a run
+
+
+def find_runs(events):
+    """[(start_beat, end_beat, pitch, ...)] sorted -> [[event, ...], ...]: the fast chromatic descents."""
+    runs, cur = [], []
+    for ev in events:
+        if cur and ev[2] == cur[-1][2] - 1 and 0 < ev[0] - cur[-1][0] <= RUN_MAX_GAP + 1e-6:
+            cur.append(ev)
+            continue
+        if len(cur) >= RUN_MIN_NOTES:
+            runs.append(cur)
+        cur = [ev]
+    if len(cur) >= RUN_MIN_NOTES:
+        runs.append(cur)
+    return runs
+
+
+def has_runs(path, profile):
+    names = THEME_RUNS.get(theme_key(path), []) if path else []
+    return profile.get("name", "").split(" (")[0] in names and isinstance(profile.get("track"), int)
+
+
+def profile_runs(path, profile):
+    """The runs (bajadas) this instrument plays with Shift + Espacio, as lists of MIDI events."""
+    if not has_runs(path, profile):
+        return []
+    from song import track_events
+    tracks = [profile["track"]] + profile.get("extra_tracks", [])
+    return find_runs(sorted(ev for tr in tracks for ev in track_events(path, tr)))
+
+
+def run_only_notes(path, profile):
+    """Notes the instrument plays only inside its runs: they don't need a key of their own."""
+    runs = profile_runs(path, profile)
+    if not runs:
+        return set()
+    in_runs = {}
+    for run in runs:
+        for ev in run:
+            in_runs[ev[2]] = in_runs.get(ev[2], 0) + 1
+    total = track_pitch_counts(path, [profile["track"]] + profile.get("extra_tracks", []))
+    return {m for m, n in in_runs.items() if total.get(m, 0) <= n}
+
+
+def strip_run_notes(path, profile):
+    """Removes the keys of the notes that only appear in the runs. Returns True if something changed."""
+    drop = run_only_notes(path, profile)
+    if not drop or not any(s.get("midi") in drop for s in profile["slots"]):
+        return False
+    keep = sorted(s["midi"] for s in profile["slots"] if s.get("midi") not in drop)
+    profile["slots"] = note_slots(keep)
+    return True
 
 
 def _apply_merges(path, profiles, keys):
