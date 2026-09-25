@@ -220,6 +220,7 @@ Cada estación suena por **su propio parlante** (el de su laptop, o el de la est
 
 **Cómo se ensaya con la app:**
 - **Práctica individual:** en **modo automático**, la app toca la pista y el intérprete la sigue. Se puede practicar al **50 % o 75 % del tempo** (botones de la app).
+- **Práctica con banda:** la app toca el resto de la banda y cada intérprete ensaya su parte como si estuviera todo el ensamble, también al tempo que elija.
 - **Menos teclas:** con **− / +** cada uno deja solo las teclas que alcanza a tocar.
 
 **Versión reducida (si la práctica no alcanza):**
@@ -248,6 +249,7 @@ Cada estación suena por **su propio parlante** (el de su laptop, o el de la est
 - **Tocar instrumento:**
   - **Manual:** tocas tú, con las notas que caen hacia un teclado dibujado. Se puede agregar o quitar notas, usar *palm mute*, *power chords* y octava, y saltar de acorde con ←/→. En la batería, mantener una tecla hace un **redoble** en semicorcheas al tempo actual de la canción.
   - **Automático:** para practicar; la app toca la pista al tempo elegido (50 %, 75 % o 100 %).
+  - **Práctica con banda:** la app toca todos los demás instrumentos del tema y el intérprete toca el suyo sobre ellos, con las notas cayendo en pantalla y un control de volumen para la banda.
 - **Configurar instrumentos:** nombre, sonido, cantidad de teclas, nota de cada tecla y distribución del teclado (A…L, luego Q…P).
 - **Escuchar tema completo:** la app toca todas las pistas juntas, como una mesa de mezcla. Hay una columna por instrumento con «Suena» y volumen (se guarda). Sirve para que el ensamble escuche la obra entera antes de repartirla.
 
