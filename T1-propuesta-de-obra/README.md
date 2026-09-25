@@ -6,7 +6,7 @@
 
 - **App (código):** repositorio [github.com/Ikilly0/ORQUESTRA-DE-LAPTOS](https://github.com/Ikilly0/ORQUESTRA-DE-LAPTOS).
 - **Render (75 s):** `render/render-order.wav` y `render/render-order.mp3`.
-- **Documentación de uso:** Parte 3 de este documento.
+- **Documentación de uso:** la explico en la Parte 3 de este documento.
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1. *CliX*, Ge Wang (2006), para la Princeton Laptop Orchestra (PLOrk)
 
-**Por qué la elegí:** en CliX los intérpretes **improvisan y tocan directamente**. Cada sonido nace de una tecla que una persona presiona en ese momento; no se reproduce nada pregrabado.
+**Por qué la elegí:** me gusta porque en CliX los intérpretes **improvisan y tocan directamente**. Cada sonido nace de una tecla que una persona presiona en ese momento; no se reproduce nada pregrabado. Eso es lo que quiero para mi obra.
 
 **Qué hace.**
 - **Qué se escucha:** según la ficha de SLOrk, «cada tecla del teclado del computador (mayúsculas, minúsculas, números, símbolos) corresponde a una altura distinta (usando su representación ASCII)». Al presionarla, emite un clic «sincronizado en el tiempo con un pulso común».
@@ -31,8 +31,8 @@
 - **Roles:** todos tocan el mismo instrumento y se diferencian por lo que el director pide.
 
 **Qué es aplicable a mi propuesta.**
-- **Sí:** el **teclado del computador como instrumento**, que es la interfaz garantizada del ensamble. También tomo que **cada sonido lo toca una persona en vivo**, que haya un **director que coordina con gestos** y una **ventana de improvisación** (sección D de mi obra).
-- **No:** el mapeo ASCII, porque mis teclas están ordenadas de grave a agudo, como un piano, para poder leer. Tampoco la sincronización automática al pulso: en mi obra el ritmo lo pone la persona.
+- **Sí:** tomo el **teclado del computador como instrumento**, que es la interfaz garantizada del ensamble. También tomo que **cada sonido lo toque una persona en vivo**, que haya un **director que coordina con gestos** y una **ventana de improvisación** (la sección D de mi obra).
+- **No:** no tomo el mapeo ASCII, porque ordené mis teclas de grave a agudo, como un piano, para que se puedan leer. Tampoco tomo la sincronización automática al pulso: en mi obra quiero que el ritmo lo ponga la persona.
 
 **Fuentes consultadas.**
 - SLOrk, «CliX (2006)»: [slork.stanford.edu/works/clix](https://slork.stanford.edu/works/clix).
@@ -49,9 +49,9 @@
 - **Créditos:** música de Daisuke Ishiwatari, letra de Ishiwatari y Junya C. Motomura, voz de Naoki Hashimoto y arreglo de Norichika Sato.
 - **Uso en el juego:** suena **en los créditos del modo historia (Episode Mode)**.
 - **Estilo:** la serie *Guilty Gear* es conocida por su música rock y metal, y el tema aparece etiquetado como *metal* y *video game music*.
-- **Mi versión de trabajo:** un MIDI de piano solo, una reinterpretación de 5:17 con 2.648 notas.
+- **Mi versión de trabajo:** trabajé con un MIDI de piano solo, una reinterpretación de 5:17 con 2.648 notas.
 
-**Cómo está construida.** Lo que sigue es mi análisis del MIDI de piano, hecho con el analizador de la app.
+**Cómo está construida.** Analicé el MIDI de piano con el analizador que hice para la app. Esto es lo que encontré:
 - **Tonalidad:** Mi mayor, con una correlación de 0,93 con el perfil de Krumhansl. Las notas más usadas son E, B, G#, A, F#, C# y D#, es decir, la escala de Mi mayor.
 - **Regiones tonales** (ventanas de 20 s): casi todo en Mi mayor. Hay zonas que tiran a Si mayor, la dominante (≈ 60-80 s y 220-260 s), y a Do# menor, la relativa (≈ 140-160 s).
 - **Métrica:** el MIDI está escrito en 4/4 a 104 BPM, pero la grilla está corrida un tercio de tiempo. Al corregirla, el bajo marca un **compás de 3 tiempos**, a unos 209 BPM, o 105 contados a medio tiempo.
@@ -64,18 +64,18 @@
 
 **Qué es aplicable a mi propuesta.**
 - **Sí:**
-  - El **formato de banda repartido en roles** (bajo, guitarras, piano, batería, voz o coro), que es justo el de *Order*.
-  - El **piano** como instrumento propio de una estación.
-  - El **análisis armónico por compás** que hice sobre *Freesia*: se convirtió en la parte de la app que muestra el **acorde actual y el siguiente** mientras se toca.
+  - Tomo el **formato de banda repartido en roles** (bajo, guitarras, piano, batería, voz o coro), que es justo el de *Order*.
+  - Tomo el **piano** como instrumento propio de una estación.
+  - El **análisis armónico por compás** que hice sobre *Freesia* lo convertí en la parte de la app que muestra el **acorde actual y el siguiente** mientras se toca.
 - **No:**
-  - *Freesia* es **una sola pista de piano**, así que no se puede repartir entre 7 a 12 estaciones sin inventar el arreglo. Por eso la obra es *Order*, que tiene 12 pistas.
-  - La **voz solista**: ninguna estación canta, y el coro es sintetizado («ah»).
+  - *Freesia* es **una sola pista de piano**, así que no la puedo repartir entre 7 a 12 estaciones sin inventar el arreglo. Por eso elegí *Order* para la obra, que tiene 12 pistas.
+  - No tomo la **voz solista**: ninguna estación canta, y el coro es sintetizado («ah»).
 
 **Fuentes consultadas.**
 - The Guilty Gear Wiki, «Freesia»: [guiltygear.wiki.gg/wiki/Freesia](https://guiltygear.wiki.gg/wiki/Freesia).
 - Wikipedia, «Guilty Gear Xrd»: [en.wikipedia.org/wiki/Guilty_Gear_Xrd](https://en.wikipedia.org/wiki/Guilty_Gear_Xrd).
 - Last.fm, ficha del tema en el *Original Sound Track*: [last.fm](https://www.last.fm/music/%E7%9F%B3%E6%B8%A1%E5%A4%AA%E8%BC%94/Guilty+Gear+Xrd+-Revelator-+Original+Sound+Track/Freesia).
-- Análisis propio del MIDI: `song.py` de la app.
+- Mi análisis del MIDI: `song.py` de la app.
 
 ---
 
@@ -85,17 +85,19 @@
 
 **Título provisorio: *Order*, para orquesta de laptops.**
 
-- **El tema:** la obra toca en vivo **ORDER**, de Heaven Pierce Her. Es un tema del videojuego **ULTRAKILL**, publicado en el álbum *ULTRAKILL: CHAOS/ORDER* (2021), la banda sonora de sus misiones secretas. Mi arreglo es un MIDI de **12 pistas** que transcribí y reinterpreté: cello, violín, orquesta de cuerdas, dos capas de cuerdas en trémolo, coro, piano, bajo, dos guitarras distorsionadas y batería.
+Propongo que el ensamble toque en vivo, a mano, un tema completo de banda repartido entre todas las laptops.
+
+- **El tema:** elegí **ORDER**, de Heaven Pierce Her. Es un tema del videojuego **ULTRAKILL**, publicado en el álbum *ULTRAKILL: CHAOS/ORDER* (2021), la banda sonora de sus misiones secretas. Mi arreglo es un MIDI de **12 pistas** que transcribí y reinterpreté: cello, violín, orquesta de cuerdas, dos capas de cuerdas en trémolo, coro, piano, bajo, dos guitarras distorsionadas y batería.
 - **Fuente del tema:** Heaven Pierce Her, *ULTRAKILL: CHAOS/ORDER*, en Bandcamp: [heavenpierceher.bandcamp.com](https://heavenpierceher.bandcamp.com/album/ultrakill-chaos-order).
-- **Cómo se toca:** cada estación es un instrumento de esa banda y lo **toca nota por nota con el teclado** del computador. La pantalla le muestra las notas que vienen, cayendo hacia un teclado dibujado. **Nada se reproduce solo:** si una estación no toca, su voz no existe.
-- **Relación con *CliX*:** el teclado como instrumento, un director que coordina y una ventana de **improvisación** (sección D), donde cada uno toca lo que decide.
-- **Relación con *Freesia*:** el género (metal y orquesta de videojuego), el formato de banda repartido en roles, el piano y el análisis armónico que guía a los intérpretes.
+- **Cómo se toca:** cada estación es un instrumento de esa banda y lo **toca nota por nota con el teclado** del computador. Para eso hice una app en la que la pantalla muestra las notas que vienen, cayendo hacia un teclado dibujado. **Nada se reproduce solo:** si una estación no toca, su voz no existe.
+- **Relación con *CliX*:** de CliX tomé el teclado como instrumento, un director que coordina y una ventana de **improvisación** (sección D), donde cada uno toca lo que decide.
+- **Relación con *Freesia*:** de Freesia tomé el género (metal y orquesta de videojuego), el formato de banda repartido en roles, el piano y el análisis armónico que guía a los intérpretes.
 
 ### 2. Estructura formal
 
 ![Forma de Order](img/forma-order.png)
 
-La forma sigue las secciones del tema, que salen del análisis del MIDI: qué pistas suenan y qué acordes hay en cada tramo. La estructura base es la de la tabla; la sección D es la que da espacio a la improvisación.
+Armé la forma a partir de las secciones del tema, que saqué del análisis del MIDI: qué pistas suenan y qué acordes hay en cada tramo. La sección D es la que agregué para dar espacio a la improvisación.
 
 | Sección | Compases | Duración (170 BPM) | Qué sucede | Paso a la siguiente |
 | --- | --- | --- | --- | --- |
@@ -110,7 +112,7 @@ La forma sigue las secciones del tema, que salen del análisis del MIDI: qué pi
 
 ### 3. Estrategia de coordinación
 
-**Sin red.** La coordinación es **humana**, apoyada en la pantalla de cada estación:
+**Sin red.** Propongo una coordinación **humana**, apoyada en la pantalla de cada estación:
 
 1. **Mismo punto de partida.** Todas las estaciones eligen el mismo **tempo (BPM)** y el mismo punto **Desde** en la app. Los puntos de partida están cada 8 compases e indican su acorde.
 2. **Cuenta del director.** El director (estación de piano) cuenta con la mano «3, 2, 1» y todos presionan **Empezar** a la vez. La app da **un compás de cuenta** con clic y la música empieza en el tiempo 1.
@@ -119,11 +121,11 @@ La forma sigue las secciones del tema, que salen del análisis del MIDI: qué pi
 5. **Si se pierde todo el ensamble,** el director detiene la obra con el puño cerrado, anuncia el siguiente punto **Desde** y vuelve a contar.
 6. **Gestos del director en la sección D:** son los que sirven para improvisar (ver punto 5).
 
-**Red:** la obra **no la usa**. Como mejora futura, la estación del director podría enviar por OSC, con el protocolo `/oluc`, un mensaje de inicio (`/oluc/order/start compas bpm`) y uno por compás (`/oluc/order/compas n`). Si un mensaje se pierde, la estación sigue con su propio reloj. Sin red, la obra se toca exactamente como se describe arriba.
+**Red:** no la uso. Como mejora futura, pienso que la estación del director podría enviar por OSC, con el protocolo `/oluc`, un mensaje de inicio (`/oluc/order/start compas bpm`) y uno por compás (`/oluc/order/compas n`). Si un mensaje se pierde, la estación sigue con su propio reloj. Sin red, la obra se toca exactamente como se describe arriba.
 
 ### 4. Roles por estación
 
-Cada estación **toca en vivo** su pista. Tiene que decidir y ejecutar en tiempo real:
+En mi propuesta, cada estación **toca en vivo** su pista. Tiene que decidir y ejecutar en tiempo real:
 
 - **Tocar a tiempo** las notas que caen.
 - **Técnicas:**
@@ -133,7 +135,7 @@ Cada estación **toca en vivo** su pista. Tiene que decidir y ejecutar en tiempo
   - **agregar o quitar notas** a su teclado, con los botones «+ nota grave» y «+ nota aguda».
 - **Improvisar** en la sección D.
 
-El **modo automático** de la app, en el que la app toca la pista, es **solo para practicar**. En el concierto nadie lo usa.
+Hice el **modo automático** de la app, en el que la app toca la pista, **solo para practicar**. En el concierto nadie lo usa.
 
 **Estaciones:**
 
@@ -156,7 +158,7 @@ La obra funciona **con cualquier número de intérpretes entre 7 y 12**. Las pis
 
 ### 5. Notación e instrucciones de ejecución
 
-- **Toda la obra se nota en pantalla.** Cada estación ve su pista como **notas que caen** hacia su teclado:
+- **Toda la obra la noto en pantalla.** Cada estación ve su pista como **notas que caen** hacia su teclado:
   - una columna por tecla, de grave (izquierda) a agudo (derecha);
   - la nota se toca cuando llega a la línea blanca;
   - el largo del bloque indica cuánto se mantiene.
@@ -205,17 +207,17 @@ La obra funciona **con cualquier número de intérpretes entre 7 y 12**. Las pis
 
 ### 6. Sonido en la sala
 
-Cada estación suena por **su propio parlante** (el de su laptop, o el de la estación cuando esté listo). No hay mezcla central: la mezcla ocurre en la sala. **Por ahora el espacio no juega ningún papel compositivo.** La disposición es la de una banda: batería y bajo al centro, guitarras a un lado, cuerdas al otro y el piano (director) al frente, mirando al ensamble. El balance entre estaciones se ajusta en el ensayo con el volumen de cada app.
+Cada estación suena por **su propio parlante** (el de su laptop, o el de la estación cuando esté listo). No uso mezcla central: la mezcla ocurre en la sala. **Por ahora el espacio no juega ningún papel compositivo en mi obra.** Propongo la disposición de una banda: batería y bajo al centro, guitarras a un lado, cuerdas al otro y el piano (director) al frente, mirando al ensamble. El balance entre estaciones se ajusta en el ensayo con el volumen de cada app.
 
 ### 7. Riesgos y versión reducida
 
-- **Lo más probable es que falle la práctica.** Leer las notas que caen a 170 BPM exige ensayo, sobre todo a la batería (8,8 notas por segundo) y a la guitarra rítmica (4,5), y el bloque de ensayos es corto.
+- **Creo que lo más probable es que falle la práctica.** Leer las notas que caen a 170 BPM exige ensayo, sobre todo a la batería (8,8 notas por segundo) y a la guitarra rítmica (4,5), y el bloque de ensayos es corto.
 - **Otros riesgos:**
   - **Desfase entre estaciones:** se corrige con la cuenta por sección y las teclas ← / →.
   - **Latencia de audio:** la app usa WASAPI en Windows.
   - **Teclados que no registran varias teclas a la vez:** se prueba en el primer ensayo.
 
-**Cómo se ensaya con la app:**
+**Cómo propongo ensayar con la app:**
 - **Práctica individual:** en **modo automático**, la app toca la pista y el intérprete la sigue. Se puede practicar al **50 % o 75 % del tempo** (botones de la app).
 - **Menos teclas:** con **− / +** cada uno deja solo las teclas que alcanza a tocar.
 
@@ -229,10 +231,10 @@ Cada estación suena por **su propio parlante** (el de su laptop, o el de la est
 
 ## Parte 3: Material sonoro: la app *Keyboard Instruments*
 
-**Qué es.** La app que creamos para tocar la obra: una aplicación de escritorio en **Python** que cada estación abre para tocar su instrumento con el teclado.
+**Qué es.** Es la app que desarrollé para tocar la obra, con ayuda de IA (ver la declaración de uso). Es una aplicación de escritorio en **Python** que cada estación abre para tocar su instrumento con el teclado.
 
 - **Código:** [github.com/Ikilly0/ORQUESTRA-DE-LAPTOS](https://github.com/Ikilly0/ORQUESTRA-DE-LAPTOS).
-- **Render:** `render/render-order.wav`, 75 s, generado con la misma app.
+- **Render:** `render/render-order.wav`, de 75 s, que generé con la misma app.
 
 ![Menú del tema y elección de instrumento](img/app-menu.png)
 
@@ -294,7 +296,7 @@ Cada estación suena por **su propio parlante** (el de su laptop, o el de la est
 
 ## Condiciones del ensamble real
 
-**La propuesta cumple todas las condiciones del enunciado:**
+**Mi propuesta cumple todas las condiciones del enunciado:**
 
 - **Intérpretes:** funciona con **7** y crece hasta **12**.
 - **Equipo:** **una laptop por estación**.
