@@ -135,29 +135,24 @@ Cada estación **toca en vivo** su pista. Tiene que decidir y ejecutar en tiempo
 
 El **modo automático** de la app, en el que la app toca la pista, es **solo para practicar**. En el concierto nadie lo usa.
 
-**Núcleo de 7 intérpretes:**
+**Estaciones:**
 
 | # | Estación | Qué toca | Qué decide o ejecuta en vivo | Carga (notas por segundo, promedio del tema) |
 | --- | --- | --- | --- | --- |
 | 1 | **Batería: tambores** | Bombo, bombo 2, caja y toms | Es el **pulso de todos**. En la sección D sigue leyendo y decide los rellenos. | Alta (8,8) |
-| 2 | **Bajo** | Fundamentales | Es la base armónica. En la sección D sigue leyendo; puede sostener una nota pedal. | Media (2,7) |
-| 3 | **Guitarra rítmica** | Riffs graves | *Palm mute* y *power chords* en vivo. Improvisa en la sección D. | Media-alta (4,5) |
-| 4 | **Guitarra 2 + solista** | Las dos guitarras del MIDI, unidas porque se turnan | Lleva el **solo** de los compases 166-197. Improvisa en la sección D. | Media (2,0) |
-| 5 | **Piano (director)** | Pocas notas | **Dirige**: cuenta, entradas y gestos de la sección D. Toca cuando no está dirigiendo. | Baja (0,4) |
-| 6 | **Violín** | Melodía de cuerdas | Abre la obra (sección A). Improvisa en la sección D. | Baja (1,1) |
-| 7 | **Cello** | Línea grave de cuerdas | Abre la obra con el violín. Improvisa en la sección D. | Media (1,6) |
+| 2 | **Batería: platillos** | Hi-hat, ride y crash | Completa la batería. En la sección D sigue leyendo y decide los acentos. | Alta (8,9) |
+| 3 | **Bajo** | Fundamentales | Es la base armónica. En la sección D sigue leyendo; puede sostener una nota pedal. | Media (2,7) |
+| 4 | **Guitarra rítmica** | Riffs graves | *Palm mute* y *power chords* en vivo. Improvisa en la sección D. | Media-alta (4,5) |
+| 5 | **Guitarra 2 + solista** | Las dos guitarras del MIDI, unidas porque se turnan | Lleva el **solo** de los compases 166-197. Improvisa en la sección D. | Media (2,0) |
+| 6 | **Piano (director)** | Pocas notas | **Dirige**: cuenta, entradas y gestos de la sección D. Toca cuando no está dirigiendo. | Baja (0,4) |
+| 7 | **Violín** | Melodía de cuerdas | Abre la obra (sección A). Improvisa en la sección D. | Baja (1,1) |
+| 8 | **Cello** | Línea grave de cuerdas | Abre la obra con el violín. Improvisa en la sección D. | Media (1,6) |
+| 9 | **Orquesta de cuerdas** | Colchón armónico | Sostiene los acordes. En la sección D, notas largas. | Baja (1,2) |
+| 10 | **Coro** | Notas largas | Aparece en la intro. En la sección D, notas largas sobre el acorde. | Baja (0,5) |
+| 11 | **Cuerdas trémolo** | Textura de trémolo | Improvisa en la sección D. | Baja (0,4) |
+| 12 | **Cuerdas trémolo 2** | Segunda capa de trémolo | Improvisa en la sección D. | Media (2,0) |
 
-**De 8 a 12 intérpretes** (se suman en este orden):
-
-| # | Estación | Aporta |
-| --- | --- | --- |
-| 8 | **Batería: platillos** (hi-hat, ride, crash) | Completa la batería |
-| 9 | **Orquesta de cuerdas** | Colchón armónico |
-| 10 | **Coro** | Notas largas en la intro y en la sección D |
-| 11 | **Cuerdas trémolo 2** | Textura de trémolo |
-| 12 | **Cuerdas trémolo** | Segunda capa de trémolo |
-
-Con 7 intérpretes, las pistas sin estación simplemente no suenan: el arreglo se adelgaza, pero el tema se mantiene porque la base (batería, bajo y guitarras) está completa.
+La obra funciona **con cualquier número de intérpretes entre 7 y 12**. Las pistas que no tienen estación simplemente no suenan: el arreglo se adelgaza, pero el tema se mantiene mientras estén la batería, el bajo y las guitarras.
 
 ### 5. Notación e instrucciones de ejecución
 
@@ -226,7 +221,7 @@ Cada estación suena por **su propio parlante** (el de su laptop, o el de la est
 
 **Versión reducida (si la práctica no alcanza):**
 - **Tempo:** al 75 % (≈ 128 BPM).
-- **Estaciones:** solo las 7 del núcleo.
+- **Estaciones:** 7, con la batería, el bajo y las guitarras entre ellas.
 - **Batería:** en lugar de leer, marca un pulso simple (bombo en 1, caja en 2 y 3).
 - **Forma:** secciones **B, D y F** (≈ 2:30 al 75 %). Si el director repite la D, dura unos 3:15.
 
