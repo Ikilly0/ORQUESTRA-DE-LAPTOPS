@@ -44,7 +44,8 @@ from tkinter import ttk  # noqa: E402
 from audio import Engine  # noqa: E402
 import threading  # noqa: E402
 from instruments import DRUM_GROUPS, DRUM_PIECES, INSTRUMENTS, SR, DrumKit, drum_group  # noqa: E402
-from profiles import (KEY_POSITIONS, LAYOUTS, MAX_KEYS, theme_key, theme_profiles, default_profiles, free_key, drum_part_profiles, merged_profile, theme_merges,  # noqa: E402
+from profiles import (KEY_POSITIONS, LAYOUTS, MAX_KEYS, theme_key, theme_profiles, default_profiles, free_key, drum_part_profiles, merged_profile, theme_merges,
+                      track_pitch_counts, all_notes, note_slots,  # noqa: E402
                       is_drums, load_profiles, piano_layout, save_profiles, scale_notes)
 from song import (GM_DRUMS, INTERVAL_LABELS, ROLES, chord_intervals, load_song, chord_name, midi_tracks,  # noqa: E402
                   track_events)
@@ -328,6 +329,7 @@ class MainMenu(tk.Tk):
         self._remember_tracks()
         self._split_theme_drums()
         self._merge_theme_tracks()
+        self._complete_theme_notes()
         self.profiles = self._visible()
         self.show_menu()
 
@@ -341,6 +343,23 @@ class MainMenu(tk.Tk):
                 name = p["name"].split(" (")[0]
                 self.all_profiles[i:i + 1] = drum_part_profiles(name, self.theme_key, p["track"])
                 changed = True
+        if changed:
+            save_profiles(PROFILES_FILE, self.all_profiles)
+
+    def _complete_theme_notes(self):
+        """Theme instruments made before: give every note their track plays its own key (once)."""
+        if not self.theme_path or not self.theme_key:
+            return
+        changed = False
+        for p in self.all_profiles:
+            if (p.get("theme") != self.theme_key or not isinstance(p.get("track"), int) or p.get("all_notes")
+                    or is_drums(p["sound"])):
+                continue
+            counts = track_pitch_counts(self.theme_path, [p["track"]] + p.get("extra_tracks", []))
+            mine = [s["midi"] for s in p["slots"]]
+            p["slots"] = note_slots(all_notes(counts, mine))  # keeps the notes you added, adds the missing
+            p["all_notes"] = True
+            changed = True
         if changed:
             save_profiles(PROFILES_FILE, self.all_profiles)
 

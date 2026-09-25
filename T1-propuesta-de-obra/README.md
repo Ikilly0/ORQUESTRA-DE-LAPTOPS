@@ -244,7 +244,7 @@ Cada estación suena por **su propio parlante** (el de su laptop, o el de la est
 
 - **Elegir tema:** cada `.mid` de la carpeta `songs/` es un tema, por ejemplo *Order - Ultrakill* y *Freesia - Guilty Gear*. La app **crea un instrumento por cada pista del MIDI**:
   - el timbre sale del instrumento General MIDI de la pista;
-  - las teclas son las 19 notas que esa pista más usa, con su octava real;
+  - **cada nota que la pista toca tiene su propia tecla**, con su octava real (hasta 40). Primero van A…L y Q…P; si faltan teclas, las notas graves van en Z…M y las agudas en 1…0;
   - en *Order*, la batería se divide en **tambores** y **platillos**, y las dos guitarras que se turnan se unen en **Guitarra 2 + solista**.
 - **Tocar instrumento:**
   - **Manual:** tocas tú, con las notas que caen hacia un teclado dibujado. Se puede agregar o quitar notas, usar *palm mute*, *power chords* y octava, y saltar de acorde con ←/→. En la batería, mantener una tecla hace un **redoble** en semicorcheas al tempo actual de la canción.

@@ -136,6 +136,8 @@ def sanitize(profile):
             out["extra_tracks"] = extra
     if drums and profile.get("part") in DRUM_GROUPS:
         out["part"] = profile["part"]
+    if profile.get("all_notes"):
+        out["all_notes"] = True
     return out
 
 
@@ -192,9 +194,11 @@ def theme_profiles(path):
         if t["drums"]:
             out += drum_part_profiles(name, key, t["index"])
             continue
-        top = _notes_for(note_stats(path, t["index"]), t["low"], t["high"], len(home_top))
+        st = note_stats(path, t["index"])
+        pad = _notes_for(st, t["low"], t["high"], 8) if len(st["pitches"]) < 8 else ()
+        top = all_notes(st["pitches"], pad)  # every note the track plays gets its own key
         out.append({"name": name, "sound": sound_for_program(t["program"]), "theme": key, "track": t["index"],
-                    "slots": [{"key": k, "midi": m} for k, m in zip(home_top, top)]})
+                    "all_notes": True, "slots": note_slots(top)})
     return _apply_merges(path, out, home_top)
 
 
@@ -225,7 +229,40 @@ def _notes_for(st, low, high, count_max):
     return sorted(top)
 
 
-def merged_profile(path, name, tracks, sound, keys):
+def keys_for_notes(n):
+    """Keys for n notes, low to high. Up to 19: A..L then Q..P. More: the lowest notes go on the bottom row
+    (ending at M, next to A), the highest on the number row, then ; ' , . / [ ] - =."""
+    home_top = HOME_MAIN + TOP_MAIN
+    if n <= len(home_top):
+        return home_top[:n]
+    low = min(len(LOW_MAIN), n - len(home_top))
+    keys = LOW_MAIN[len(LOW_MAIN) - low:] + home_top + NUM_MAIN + EXTRA_KEYS
+    return keys[:n]
+
+
+def track_pitch_counts(path, tracks):
+    """{pitch: times played} of the given tracks (drum channel excluded)."""
+    from song import note_stats
+    counts = {}
+    for tr in tracks:
+        for m, n in note_stats(path, tr)["pitches"].items():
+            counts[m] = counts.get(m, 0) + n
+    return counts
+
+
+def all_notes(counts, extra=()):
+    """Every pitch a track plays (the most played ones if there are more than MAX_KEYS), low to high."""
+    pitches = set(counts) | set(extra)
+    if len(pitches) > MAX_KEYS:
+        pitches = set(sorted(pitches, key=lambda m: -counts.get(m, 0))[:MAX_KEYS])
+    return sorted(pitches)
+
+
+def note_slots(pitches):
+    return [{"key": k, "midi": m} for k, m in zip(keys_for_notes(len(pitches)), pitches)]
+
+
+def merged_profile(path, name, tracks, sound, keys=None):
     """One instrument that follows several tracks: keys = the notes they play most, all together."""
     from song import note_stats
     stats = [note_stats(path, tr)["pitches"] for tr in tracks]
@@ -235,11 +272,9 @@ def merged_profile(path, name, tracks, sound, keys):
             counts[m] = counts.get(m, 0) + n
     # every note that is important for one of the tracks (>= 5% of it: the whole short solo), then the
     # most played notes overall
-    must = {m for s in stats for m, n in s.items() if n / (sum(s.values()) or 1) >= 0.05}
-    rest = sorted((m for m in counts if m not in must), key=lambda m: -counts[m])
-    top = sorted((sorted(must, key=lambda m: -counts[m]) + rest)[:len(keys)])
-    return {"name": name, "sound": sound, "theme": theme_key(path), "track": tracks[0],
-            "extra_tracks": list(tracks[1:]), "slots": [{"key": k, "midi": m} for k, m in zip(keys, top)]}
+    top = all_notes(counts)  # every note both tracks play, one key each
+    return {"name": name, "sound": sound, "theme": theme_key(path), "track": tracks[0], "all_notes": True,
+            "extra_tracks": list(tracks[1:]), "slots": note_slots(top)}
 
 
 def theme_merges(path):
