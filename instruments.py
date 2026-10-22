@@ -757,7 +757,7 @@ class Vocal(Instrument):
     formants = [(730, 110, 1.0), (1090, 130, 0.6), (2440, 180, 0.25), (3400, 220, 0.1)]
 
     def voice(self, freq, **_):
-        return AdditiveVoice(freq, Envelope(0.06, 0.1, 0.9, 0.18), formant_partials(freq, self.formants),
+        return AdditiveVoice(freq, Envelope(0.03, 0.1, 0.9, 0.18), formant_partials(freq, self.formants),
                              vibrato_rate=5.0, vibrato_depth=0.012, vibrato_delay=0.3)
 
 
@@ -891,7 +891,7 @@ class Strings(Instrument):
     }
 
     def voice(self, freq, **_):
-        return AdditiveVoice(freq, Envelope(0.12, 0.2, 0.9, 0.25), _saw(18, 1.25, (1.0, 1.0025)),
+        return AdditiveVoice(freq, Envelope(0.04, 0.2, 0.9, 0.25), _saw(18, 1.25, (1.0, 1.0025)),
                              vibrato_rate=5.5, vibrato_depth=0.006, vibrato_delay=0.25)
 
 
@@ -907,7 +907,7 @@ class StringEnsemble(Instrument):
     }
 
     def voice(self, freq, **_):
-        return AdditiveVoice(freq, Envelope(0.3, 0.3, 0.85, 0.5),
+        return AdditiveVoice(freq, Envelope(0.08, 0.3, 0.85, 0.5),
                              _saw(14, 1.35, (1.0, 1.004, 0.996, 1.0015)),
                              vibrato_rate=4.5, vibrato_depth=0.002)
 
@@ -924,7 +924,7 @@ class TremoloStrings(Instrument):
     }
 
     def voice(self, freq, **_):
-        return TremoloVoice(freq, Envelope(0.08, 0.2, 0.9, 0.3), _saw(14, 1.3, (1.0, 1.003, 0.997)),
+        return TremoloVoice(freq, Envelope(0.03, 0.2, 0.9, 0.3), _saw(14, 1.3, (1.0, 1.003, 0.997)),
                             tremolo_rate=12.0, gain=2.2)  # x2.2 (+7 dB): was the quietest of the band
 
 

@@ -282,6 +282,13 @@ class Engine:
         if len(self.voices) > MAX_VOICES:
             self.voices = self.voices[-MAX_VOICES:]
 
+    def output_delay(self):
+        """Seconds between a sample entering the stream and coming out of the speaker (buffer + device)."""
+        try:
+            return float(self.stream.latency) + BLOCK / SR if self.stream is not None else 0.0
+        except Exception:
+            return 0.0
+
     def clock_seconds(self):
         with self.lock:
             return self.clock_samples / SR if self.clock_on else None

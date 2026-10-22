@@ -1140,6 +1140,7 @@ class PlayWindow(tk.Toplevel):
         self.track = track if song is not None else None
         self.auto = bool(auto) and self.track is not None
         self.band = bool(band) and self.track is not None and not self.auto  # practice with the band
+        self.vis_delay = engine.output_delay()  # audio output latency, to keep the picture with the sound
         self.band_notes = []     # [(on, off, pitch, instrument)] of every other instrument of the theme
         self.band_starts = []
         self.band_ptr = 0
@@ -1786,48 +1787,28 @@ class PlayWindow(tk.Toplevel):
             self._hw_clicked = None
 
     def _draw_highway(self, now_song):
+        """Falling notes. The lanes and the keyboard are drawn once (and again only when the size or the
+        keys change); every frame just moves a pool of note rectangles, so a frame costs very little."""
         hw = self.highway
         if hw is None:
             return
-        hw.delete("all")
         w = max(hw.winfo_width(), 200)
         h = max(hw.winfo_height(), 200)
         n = max(1, len(self.lanes))
         lane_w = w / n
         y_hit = h - self.HW_KEYS
+        sig = (w, h, tuple(sorted(self.lanes.items())), tuple(s.get("key") for s in self.slots),
+               tuple(self.slot_midis), self.octave_shift)
+        if sig != getattr(self, "_hw_sig", None):
+            self._hw_build_static(w, h, lane_w, y_hit)
+            self._hw_sig = sig
         span = self.HW_AHEAD * (self.speed if self.running else self._speed())
         pps = y_hit / span  # pixels per song-second
-        font_key = ("TkDefaultFont", max(8, min(18, int(lane_w * 0.4))), "bold")
-        font_note = ("TkDefaultFont", max(7, min(10, int(lane_w * 0.22))))
-        for slot, lane in self.lanes.items():
-            x = lane * lane_w
-            black = not self.drums and self.slot_midis[slot] is not None and self.slot_midis[slot] % 12 in SHARPS
-            hw.create_rectangle(x, 0, x + lane_w, y_hit, width=0,
-                                fill="#101114" if black else ("#1b1c21" if lane % 2 == 0 else "#16171b"))
-            # the key itself, right under the line
-            lit = slot in self.hw_lit
-            hw.create_rectangle(x + 2, y_hit + 4, x + lane_w - 2, h - 2, width=0,
-                                fill=self.ins.color if lit else (BLACK_KEY if black else "#2e3038"))
-            hw.create_text(x + lane_w / 2, y_hit + self.HW_KEYS * 0.42, text=key_label(self.slots[slot]["key"]),
-                           fill=FG, font=font_key)
-            sub = (DRUM_PIECES[self.slots[slot]["piece"]][0] if self.drums
-                   else note_text(self.slot_midis[slot] + 12 * self.octave_shift))
-            hw.create_text(x + lane_w / 2, y_hit + self.HW_KEYS * 0.78, text=sub,
-                           fill=FG if lit else MUTED, font=font_note)
-        hw.create_line(0, y_hit, w, y_hit, fill="#f0f0f0", width=3)
         drums = self.drums or self.auto_drums
         lo = bisect_left(self.auto_starts, now_song - self.max_dur)
         hi = bisect_left(self.auto_starts, now_song + span)
-        for r in self.runs:  # bajada: one wide block, played with Shift + Espacio
-            if r["off"] < now_song or r["on"] > now_song + span:
-                continue
-            y_on = y_hit - (r["on"] - now_song) * pps
-            y_off = min(y_on - 28, y_hit - (r["off"] - now_song) * pps)
-            active = r["on"] <= now_song < r["off"]
-            hw.create_rectangle(4, max(0, y_off), w - 4, min(y_hit, y_on), width=0,
-                                fill="#ffffff" if active else self.ins.color)
-            hw.create_text(w / 2, (max(0, y_off) + min(y_hit, y_on)) / 2, text="BAJADA:  Shift + Espacio",
-                           fill="#16171b", font=("TkDefaultFont", 16, "bold"))
+        self._hw_draw_runs(now_song, span, pps, w, y_hit)
+        boxes = []
         for on, off, pitch in self.auto_events[lo:hi]:
             if self.runs and any(r["on"] - 1e-6 <= on <= r["off"] for r in self.runs):
                 continue  # drawn as the bajada block above
@@ -1841,9 +1822,96 @@ class PlayWindow(tk.Toplevel):
             x = self.lanes[slot] * lane_w
             y_on = y_hit - (on - now_song) * pps          # the note's bottom reaches the line at its start
             y_off = min(y_on - 8, y_hit - (off - now_song) * pps + 2)  # small gap between repeated notes
-            active = on <= now_song < off
-            hw.create_rectangle(x + 3, max(0, y_off), x + lane_w - 3, min(y_hit, y_on), width=0,
-                                fill="#ffffff" if active else self.ins.color)
+            fill = "#ffffff" if on <= now_song < off else self.ins.color
+            boxes.append((x + 3, max(0, y_off), x + lane_w - 3, min(y_hit, y_on), fill))
+        pool = self._hw_pool
+        while len(pool) < len(boxes):
+            pool.append([hw.create_rectangle(0, 0, 0, 0, width=0, state="hidden", tags="note"), None, False])
+            hw.tag_lower(pool[-1][0], "keys")
+        for item, box in zip(pool, boxes):
+            hw.coords(item[0], *box[:4])
+            if item[1] != box[4]:
+                hw.itemconfig(item[0], fill=box[4])
+                item[1] = box[4]
+            if not item[2]:
+                hw.itemconfig(item[0], state="normal")
+                item[2] = True
+        for item in pool[len(boxes):]:
+            if item[2]:
+                hw.itemconfig(item[0], state="hidden")
+                item[2] = False
+
+    def _hw_draw_runs(self, now_song, span, pps, w, y_hit):
+        """Bajadas: one wide block across the lanes, played with Shift + Espacio (pooled like the notes)."""
+        hw = self.highway
+        shown = []
+        for r in self.runs:
+            if r["off"] < now_song or r["on"] > now_song + span:
+                continue
+            y_on = y_hit - (r["on"] - now_song) * pps
+            y_off = min(y_on - 28, y_hit - (r["off"] - now_song) * pps)
+            fill = "#ffffff" if r["on"] <= now_song < r["off"] else self.ins.color
+            shown.append((max(0, y_off), min(y_hit, y_on), fill))
+        pool = self._hw_run_pool
+        while len(pool) < len(shown):
+            rect = hw.create_rectangle(0, 0, 0, 0, width=0, state="hidden", tags="note")
+            text = hw.create_text(0, 0, text="BAJADA:  Shift + Espacio", fill="#16171b", state="hidden",
+                                  font=("TkDefaultFont", 16, "bold"), tags="note")
+            hw.tag_lower(text, "keys")
+            hw.tag_lower(rect, text)
+            pool.append([rect, text, None, False])
+        for item, (y0, y1, fill) in zip(pool, shown):
+            hw.coords(item[0], 4, y0, w - 4, y1)
+            hw.coords(item[1], w / 2, (y0 + y1) / 2)
+            if item[2] != fill:
+                hw.itemconfig(item[0], fill=fill)
+                item[2] = fill
+            if not item[3]:
+                hw.itemconfig(item[0], state="normal")
+                hw.itemconfig(item[1], state="normal")
+                item[3] = True
+        for item in pool[len(shown):]:
+            if item[3]:
+                hw.itemconfig(item[0], state="hidden")
+                hw.itemconfig(item[1], state="hidden")
+                item[3] = False
+
+    def _hw_build_static(self, w, h, lane_w, y_hit):
+        hw = self.highway
+        hw.delete("all")
+        self._hw_run_pool = []  # [rectangle, text, fill, visible] of the bajada blocks
+        self._hw_pool = []      # [item id, fill, visible] of the note rectangles
+        self._hw_keys = {}      # slot -> (key rectangle, note text, black key?)
+        font_key = ("TkDefaultFont", max(8, min(18, int(lane_w * 0.4))), "bold")
+        font_note = ("TkDefaultFont", max(7, min(10, int(lane_w * 0.22))))
+        for slot, lane in self.lanes.items():
+            x = lane * lane_w
+            black = not self.drums and self.slot_midis[slot] is not None and self.slot_midis[slot] % 12 in SHARPS
+            hw.create_rectangle(x, 0, x + lane_w, y_hit, width=0, tags="lanes",
+                                fill="#101114" if black else ("#1b1c21" if lane % 2 == 0 else "#16171b"))
+        for slot, lane in self.lanes.items():  # the keyboard, right under the line
+            x = lane * lane_w
+            black = not self.drums and self.slot_midis[slot] is not None and self.slot_midis[slot] % 12 in SHARPS
+            key = hw.create_rectangle(x + 2, y_hit + 4, x + lane_w - 2, h - 2, width=0, tags="keys",
+                                      fill=BLACK_KEY if black else "#2e3038")
+            hw.create_text(x + lane_w / 2, y_hit + self.HW_KEYS * 0.42, text=key_label(self.slots[slot]["key"]),
+                           fill=FG, font=font_key, tags="keys")
+            sub = (DRUM_PIECES[self.slots[slot]["piece"]][0] if self.drums
+                   else note_text(self.slot_midis[slot] + 12 * self.octave_shift))
+            txt = hw.create_text(x + lane_w / 2, y_hit + self.HW_KEYS * 0.78, text=sub, fill=MUTED,
+                                 font=font_note, tags="keys")
+            self._hw_keys[slot] = (key, txt, black)
+        hw.create_line(0, y_hit, w, y_hit, fill="#f0f0f0", width=3, tags="keys")
+        for slot in self.hw_lit:
+            self._hw_paint_key(slot, True)
+
+    def _hw_paint_key(self, slot, on):
+        k = getattr(self, "_hw_keys", {}).get(slot)
+        if k is None:
+            return
+        key, txt, black = k
+        self.highway.itemconfig(key, fill=self.ins.color if on else (BLACK_KEY if black else "#2e3038"))
+        self.highway.itemconfig(txt, fill=FG if on else MUTED)
 
     # ---- automatic playback ------------------------------------------------------
     def _auto_reset(self, from_sec):
@@ -1876,8 +1944,9 @@ class PlayWindow(tk.Toplevel):
             self.auto_ptr += 1
         if events:
             self.engine.schedule(events)
-        lit = {idx for on, off, idx in self.auto_sounding if on <= now_song < off}
-        self.auto_sounding = [x for x in self.auto_sounding if x[1] > now_song]
+        heard = now_song - self.vis_delay * self.speed
+        lit = {idx for on, off, idx in self.auto_sounding if on <= heard < off}
+        self.auto_sounding = [x for x in self.auto_sounding if x[1] > heard]
         self._auto_light(lit)
 
     def _auto_light(self, lit):
@@ -1907,14 +1976,17 @@ class PlayWindow(tk.Toplevel):
             self._stop_run()
         pos = None
         if t is not None:
-            pos = t - self.countin
             if self.auto:
                 self._auto_schedule(t)
             if self.band:
                 self._band_schedule(t)
+            # what is HEARD now left the app `output_delay` ago: draw that moment, so the falling notes
+            # reach the line exactly when you hear them (not ~30 ms before)
+            t = max(0.0, t - self.vis_delay)
+            pos = t - self.countin
         if pos is not None and pos < 0:
             beats_left = int(-pos / (self.countin / self.song.meter)) + 1
-            self.bar_label.config(text=f"Cuenta:  {beats_left}")
+            self._set_text(self.bar_label, f"Cuenta:  {beats_left}")
             beat = self.start_beat
         elif pos is not None:
             if self.engine.metro_audible != self.click_var.get():
@@ -1930,19 +2002,18 @@ class PlayWindow(tk.Toplevel):
                 e = self.song.events[self.cur_idx]
                 bar = self.song.bar_of(beat)
                 in_bar = int((beat - self.song.phase) % self.song.meter) + 1
-                self.bar_label.config(text=f"Compás {bar}   ·   tiempo {in_bar} de {self.song.meter}")
+                self._set_text(self.bar_label, f"Compás {bar}   ·   tiempo {in_bar} de {self.song.meter}")
         else:
             beat = e["start"]
-            self.bar_label.config(text=f"Compás {self.song.bar_of(beat)}   ·   detenido "
-                                       f"(Empezar o ←/→)")
+            self._set_text(self.bar_label, f"Compás {self.song.bar_of(beat)}   ·   detenido (Empezar o ←/→)")
         frac = min(1.0, max(0.0, (beat - e["start"]) / e["beats"]))
         if self.cur_idx + 1 < len(self.song.events):
             n = self.song.events[self.cur_idx + 1]
             left = max(0, int(round(n["start"] - beat + 0.49)))
-            self.next_label.config(text=f"siguiente:  {chord_name(n['root'], n['quality'])}    en {left} "
-                                        f"tiempo{'s' if left != 1 else ''}")
+            self._set_text(self.next_label, f"siguiente:  {chord_name(n['root'], n['quality'])}    en {left} "
+                                            f"tiempo{'s' if left != 1 else ''}")
         else:
-            self.next_label.config(text="último acorde")
+            self._set_text(self.next_label, "último acorde")
         w = self.progress.winfo_width()
         self.progress.coords(self.progress_bar, 0, 0, w * frac, 10)
         if self.highway is not None:
@@ -1956,12 +2027,21 @@ class PlayWindow(tk.Toplevel):
         self._tick_id = self.after(33, self._tick)
 
     # ---- visuals ------------------------------------------------------------
+    def _set_text(self, label, text):
+        """Only touch a label when its text changes (reconfiguring widgets every frame is slow)."""
+        cache = self.__dict__.setdefault("_label_texts", {})
+        if cache.get(id(label)) != text:
+            cache[id(label)] = text
+            label.config(text=text)
+
     def _light(self, i, on):
-        if not self.pads:  # falling-notes keyboard: drawn on the canvas
+        if not self.pads:  # falling-notes keyboard: drawn on the canvas, lit at once (not at the next frame)
             if on:
                 self.hw_lit.add(i)
             else:
                 self.hw_lit.discard(i)
+            if self.highway is not None:
+                self._hw_paint_key(i, on)
             return
         pad, lk, ln = self.pads[i]
         bg = self.ins.color if on else self.pad_base[i]
