@@ -10,9 +10,22 @@ Funciona en **Windows 10** y **Linux Mint / Ubuntu** (Python 3.10+, Tkinter, num
 
 - **Windows 10:** doble clic en `run_windows.bat` (usa Python 3.12 de python.org; la primera vez instala todo).
 - **Linux Mint:** una vez `sudo apt install python3-venv python3-tk libportaudio2`, después `./run_linux.sh`.
+- **macOS 11 o más nuevo (Intel o Apple Silicon):** ver abajo.
 - A mano: `pip install -r requirements.txt` y `python app.py`.
 
-La ventana se abre maximizada; **F11** alterna pantalla completa.
+La ventana se abre maximizada; **F11** alterna pantalla completa (en Mac también **Cmd+Ctrl+F**).
+
+### macOS
+
+1. **Python con Tk:** instala **Python 3.12 desde [python.org](https://www.python.org/downloads/macos/)**, que ya incluye Tk 8.6. También sirve Homebrew: `brew install python@3.12 python-tk@3.12`. El `python3` que trae macOS (Xcode) no sirve, porque usa Tk 8.5; el lanzador lo detecta y te avisa.
+2. **Abrir:** doble clic en **`run_macos.command`**. La primera vez crea `.venv-macos` e instala numpy, sounddevice y mido, lo que tarda 1 a 2 minutos y muestra un aviso. Las siguientes veces abre directo. Todo queda anotado en `run.log`.
+3. **Si macOS dice que no puede abrirlo** (archivo bajado de internet): clic derecho → **Abrir** → **Abrir**, solo la primera vez. Si dice que no tiene permiso, en Terminal: `chmod +x run_macos.command make_macos_app.sh`.
+4. **Ícono en el Dock (opcional):** en Terminal, dentro de la carpeta, `./make_macos_app.sh`. Crea **Keyboard Instruments.app**, que puedes arrastrar al Dock o a Aplicaciones. La app abre esta carpeta, así que no la muevas (si la mueves, vuelve a correr el script).
+
+**Detalles de Mac:**
+
+- **Teclas mantenidas:** macOS muestra el menú de acentos (é, è, ê…) al mantener una letra y deja de mandar la tecla. Eso cortaría las notas largas y el redoble, así que el lanzador lo apaga **solo para las apps de Python** (`defaults write org.python.python ApplePressAndHoldEnabled -bool false`). Para volver atrás: `defaults delete org.python.python ApplePressAndHoldEnabled`.
+- **Audio:** sale por el dispositivo de salida que elegiste en Configuración del Sistema → Sonido (CoreAudio, baja latencia). No pide permiso de micrófono.
 
 ## Uso
 

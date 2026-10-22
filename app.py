@@ -35,6 +35,8 @@ def _fix_tcl_paths():
 
 _fix_tcl_paths()
 
+IS_MAC = sys.platform == "darwin"
+
 import tkinter as tk  # noqa: E402
 
 import numpy as np  # noqa: E402
@@ -166,10 +168,10 @@ def save_settings(data):
 
 def maximize(win):
     """Opens a window maximized ("windowed fullscreen": fills the screen, keeps the title bar).
-    F11 switches to real fullscreen and back."""
+    F11 (on macOS also Cmd+Ctrl+F) switches to real fullscreen and back."""
     def go():
         try:
-            win.state("zoomed")  # Windows
+            win.state("zoomed")  # Windows and macOS
         except tk.TclError:
             try:
                 win.attributes("-zoomed", True)  # Linux
@@ -188,6 +190,8 @@ def maximize(win):
     def toggle(_e=None):
         win.attributes("-fullscreen", not win.attributes("-fullscreen"))
     win.bind("<F11>", toggle, add="+")
+    if IS_MAC:  # F11 is "show desktop" on most Macs
+        win.bind("<Command-Control-f>", toggle, add="+")
 
 
 def apply_style(root):
@@ -610,7 +614,9 @@ class EditorWindow(tk.Toplevel):
 
     def _wheel(self, event):
         try:
-            self.canvas.yview_scroll(int(-event.delta / 120), "units")
+            # Windows reports the wheel in steps of 120, macOS in small units (trackpad: many small events)
+            step = -event.delta if IS_MAC else int(-event.delta / 120)
+            self.canvas.yview_scroll(step, "units")
         except tk.TclError:
             pass
 

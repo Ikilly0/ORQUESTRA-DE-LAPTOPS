@@ -2,6 +2,8 @@
 .venv/
 .venv312/
 .venv-linux/
+.venv-macos/
+Keyboard Instruments.app/
 __pycache__/
 *.pyc
 # datos personales de cada computador (se crean al usar la app)
