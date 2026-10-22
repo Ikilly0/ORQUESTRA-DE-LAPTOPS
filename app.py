@@ -45,7 +45,7 @@ from tkinter import ttk  # noqa: E402
 
 from audio import Engine, SequenceVoice  # noqa: E402
 import threading  # noqa: E402
-from instruments import DRUM_GROUPS, DRUM_PIECES, INSTRUMENTS, SR, DrumKit, drum_group  # noqa: E402
+from instruments import DRUM_GROUPS, DRUM_PIECES, INSTRUMENTS, SR, DrumKit, app_data_dir, drum_group  # noqa: E402
 from profiles import (KEY_POSITIONS, LAYOUTS, MAX_KEYS, theme_key, theme_profiles, default_profiles, free_key, drum_part_profiles, merged_profile, theme_merges,
                       track_pitch_counts, all_notes, note_slots,  # noqa: E402
                       is_drums, load_profiles, piano_layout, save_profiles, scale_notes,
@@ -53,7 +53,8 @@ from profiles import (KEY_POSITIONS, LAYOUTS, MAX_KEYS, theme_key, theme_profile
 from song import (GM_DRUMS, INTERVAL_LABELS, ROLES, chord_intervals, load_song, chord_name, midi_tracks,  # noqa: E402
                   track_events)
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = app_data_dir()  # the code folder, or next to the .exe / ~/Library/Application Support on a Mac .app
+RES_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))  # songs bundled in a build
 SETTINGS_FILE = os.path.join(HERE, "settings.json")
 PROFILES_FILE = os.path.join(HERE, "profiles.json")
 
@@ -116,6 +117,8 @@ def find_midi_files():
 
 
 SONGS_DIR = os.path.join(HERE, "songs")
+SONG_DIRS = [SONGS_DIR] + ([os.path.join(RES_DIR, "songs")] if os.path.abspath(RES_DIR) != os.path.abspath(HERE)
+                           else [])
 NO_TRACK = "(ninguna: solo acordes)"
 NO_THEME = "Sin tema (modo libre)"
 # Friendly names for known files (matched against the lower-case file name)
@@ -134,7 +137,7 @@ def find_themes():
     """[(name, path)]: every .mid in the app's songs folder, then .mid files found elsewhere
     (Downloads, Desktop...) that aren't already there. Names must be unique."""
     themes, seen_files, seen_names = [], set(), set()
-    candidates = [p for p in sorted(glob.glob(os.path.join(SONGS_DIR, "*.mid*")))]
+    candidates = [p for d in SONG_DIRS for p in sorted(glob.glob(os.path.join(d, "*.mid*")))]
     candidates += [p for _, p in find_midi_files()]
     for path in candidates:
         base = os.path.basename(path).lower()

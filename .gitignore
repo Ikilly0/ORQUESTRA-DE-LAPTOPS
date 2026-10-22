@@ -15,3 +15,6 @@ settings.json
 recordings/
 !samples/*.wav
 !T1-propuesta-de-obra/**/*.wav
+build/
+dist/
+*.spec

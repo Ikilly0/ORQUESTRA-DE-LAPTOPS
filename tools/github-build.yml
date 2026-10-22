@@ -1,0 +1,78 @@
+# Builds the program for Windows, macOS and Linux with PyInstaller on every push to main
+# (or by hand: Actions -> "Construir la app" -> Run workflow) and publishes it in the
+# "Keyboard Instruments" release, so the download links in the README always point to the latest build.
+name: Construir la app
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["T1-propuesta-de-obra/**", "**.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset: KeyboardInstruments-Windows.zip
+          - os: macos-latest
+            asset: KeyboardInstruments-macOS.zip
+          - os: ubuntu-22.04
+            asset: KeyboardInstruments-Linux.tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Librerías de sistema (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libportaudio2 libtk8.6
+      - name: Dependencias
+        run: python -m pip install pyinstaller -r requirements.txt
+      - name: Construir
+        run: python build_app.py
+      - name: Empaquetar (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/KeyboardInstruments -DestinationPath ${{ matrix.asset }}
+      - name: Empaquetar (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --keepParent dist/KeyboardInstruments.app ${{ matrix.asset }}
+      - name: Empaquetar (Linux)
+        if: runner.os == 'Linux'
+        run: tar -czf ${{ matrix.asset }} -C dist KeyboardInstruments
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  release:
+    needs: build
+    if: ${{ !cancelled() }}  # publish whatever was built, even if one system failed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: app
+          name: Keyboard Instruments
+          make_latest: true
+          files: out/*
+          body: |
+            Versión lista para usar, sin instalar Python. Construida desde el commit ${{ github.sha }}.
+
+            - **Windows:** descarga `KeyboardInstruments-Windows.zip`, descomprímelo y abre `KeyboardInstruments.exe`.
+              Si Windows muestra "Windows protegió su PC": *Más información* → *Ejecutar de todas formas*.
+            - **macOS (Apple Silicon):** descarga `KeyboardInstruments-macOS.zip`, descomprímelo y abre la app
+              con clic derecho → *Abrir* la primera vez. En Mac Intel usa `run_macos.command` del repositorio.
+            - **Linux:** `tar xzf KeyboardInstruments-Linux.tar.gz` y `./KeyboardInstruments/KeyboardInstruments`
+              (necesita `libportaudio2`).

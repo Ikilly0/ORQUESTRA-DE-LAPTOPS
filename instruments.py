@@ -505,7 +505,22 @@ def drum_group(piece):
 
 # Real recordings can replace the synthesised pieces: put  samples/<piece>.wav  next to app.py
 # (for example samples/ride.wav, samples/snare.wav). 16/24-bit PCM, any sample rate, mono or stereo.
-SAMPLES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "samples")
+def app_data_dir():
+    """Where the app keeps its own files (instruments, settings, logs, samples, your songs).
+    From the source code: the code folder. As a built program (.exe / .app): next to the .exe on
+    Windows and Linux; on macOS in ~/Library/Application Support/Keyboard Instruments (an .app
+    should not write inside itself)."""
+    import sys
+    if not getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(__file__))
+    if sys.platform == "darwin":
+        d = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "Keyboard Instruments")
+        os.makedirs(d, exist_ok=True)
+        return d
+    return os.path.dirname(os.path.abspath(sys.executable))
+
+
+SAMPLES_DIR = os.path.join(app_data_dir(), "samples")
 
 
 def load_sample(piece):
