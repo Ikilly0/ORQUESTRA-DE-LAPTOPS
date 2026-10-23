@@ -10,11 +10,11 @@ Funciona en **Windows 10** y **Linux Mint / Ubuntu** (Python 3.10+, Tkinter, num
 
 | Sistema | Descarga | Cómo abrirla |
 | --- | --- | --- |
-| **Windows 10/11** | [KeyboardInstruments-Windows.zip](https://github.com/Ikilly0/ORQUESTRA-DE-LAPTOS/releases/latest/download/KeyboardInstruments-Windows.zip) | Descomprime la carpeta y abre **`KeyboardInstruments.exe`**. Si aparece «Windows protegió su PC»: *Más información* → *Ejecutar de todas formas*. |
-| **macOS (Apple Silicon)** | [KeyboardInstruments-macOS.zip](https://github.com/Ikilly0/ORQUESTRA-DE-LAPTOS/releases/latest/download/KeyboardInstruments-macOS.zip) | Descomprime y abre la app con clic derecho → *Abrir*, solo la primera vez. |
-| **Linux** | [KeyboardInstruments-Linux.tar.gz](https://github.com/Ikilly0/ORQUESTRA-DE-LAPTOS/releases/latest/download/KeyboardInstruments-Linux.tar.gz) | `tar xzf` y abre `KeyboardInstruments/KeyboardInstruments` (necesita `libportaudio2`). |
+| **Windows 10/11** | [KeyboardInstruments-Windows.zip](https://github.com/Ikilly0/ORQUESTRA-DE-LAPTOPS/releases/latest/download/KeyboardInstruments-Windows.zip) | Descomprime la carpeta y abre **`KeyboardInstruments.exe`**. Si aparece «Windows protegió su PC»: *Más información* → *Ejecutar de todas formas*. |
+| **macOS (Apple Silicon)** | [KeyboardInstruments-macOS.zip](https://github.com/Ikilly0/ORQUESTRA-DE-LAPTOPS/releases/latest/download/KeyboardInstruments-macOS.zip) | Descomprime y abre la app con clic derecho → *Abrir*, solo la primera vez. |
+| **Linux** | [KeyboardInstruments-Linux.tar.gz](https://github.com/Ikilly0/ORQUESTRA-DE-LAPTOPS/releases/latest/download/KeyboardInstruments-Linux.tar.gz) | `tar xzf` y abre `KeyboardInstruments/KeyboardInstruments` (necesita `libportaudio2`). |
 
-GitHub los construye solo (`.github/workflows/build.yml`) cada vez que se sube un cambio a `main`; tarda unos 10 minutos. Todas las versiones están en [Releases](https://github.com/Ikilly0/ORQUESTRA-DE-LAPTOS/releases).
+GitHub los construye solo (`.github/workflows/build.yml`) cada vez que se sube un cambio a `main`; tarda unos 10 minutos. Todas las versiones están en [Releases](https://github.com/Ikilly0/ORQUESTRA-DE-LAPTOPS/releases).
 
 **Dónde guarda tus cosas:**
 - **Windows y Linux:** junto al programa (`profiles.json`, `settings.json` y la carpeta `songs/`, donde puedes agregar tus `.mid`).

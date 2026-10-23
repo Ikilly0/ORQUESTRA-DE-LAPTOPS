@@ -4,7 +4,7 @@
 
 **Material:**
 
-- **App (código):** repositorio [github.com/Ikilly0/ORQUESTRA-DE-LAPTOS](https://github.com/Ikilly0/ORQUESTRA-DE-LAPTOS).
+- **App (código):** repositorio [github.com/Ikilly0/ORQUESTRA-DE-LAPTOPS](https://github.com/Ikilly0/ORQUESTRA-DE-LAPTOPS).
 - **Render (75 s):** `render/render-order.wav` y `render/render-order.mp3`.
 - **Documentación de uso:** en la Parte 3 de este documento.
 
@@ -235,7 +235,7 @@ Cada estación suena por **su propio parlante** (el de su laptop, o el de la est
 
 **Qué es.** La app desarrollada para tocar la obra, con ayuda de IA (ver la declaración de uso). Es una aplicación de escritorio en **Python** que cada estación abre para tocar su instrumento con el teclado.
 
-- **Código:** [github.com/Ikilly0/ORQUESTRA-DE-LAPTOS](https://github.com/Ikilly0/ORQUESTRA-DE-LAPTOS).
+- **Código:** [github.com/Ikilly0/ORQUESTRA-DE-LAPTOPS](https://github.com/Ikilly0/ORQUESTRA-DE-LAPTOPS).
 - **Render:** `render/render-order.wav`, de 75 s, generado con la misma app.
 
 ![Menú del tema y elección de instrumento](img/app-menu.png)
