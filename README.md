@@ -77,6 +77,11 @@ los sonidos sintetizados, pon `samples/<pieza>.wav` (ver `samples/LEEME.txt`).
 Pistas que una sola persona puede tocar porque se turnan se juntan en un instrumento (en Order:
 **Guitarra 2 + solista**). Se configura en `THEME_MERGES` de `profiles.py`.
 
+### Cello en la fila de números
+En Order, el **Cello** se toca en la fila de números, de **`** a **=** (` 1 2 3 4 5 6 7 8 9 0 - =, de grave a
+agudo), así sus frases no saltan de la L a la Q y las notas no se cortan. Se configura en `THEME_KEYS` de
+`profiles.py`; un Cello que ya tenías guardado con las teclas de siempre se mueve solo la próxima vez que abras el tema.
+
 ### Agregar un tema
 Copia el `.mid` a `songs/`. Tempo y cambios de tempo del MIDI se respetan.
 

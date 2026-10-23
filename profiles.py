@@ -199,6 +199,7 @@ def theme_profiles(path):
         top = all_notes(st["pitches"], pad)  # every note the track plays gets its own key
         out.append({"name": name, "sound": sound_for_program(t["program"]), "theme": key, "track": t["index"],
                     "all_notes": True, "slots": note_slots(top)})
+        apply_theme_keys(path, out[-1])
     return _apply_merges(path, out, home_top)
 
 
@@ -207,6 +208,33 @@ def theme_profiles(path):
 THEME_MERGES = {
     "heaven pierce her - order.mid": [("Guitarra 2 + solista", [9, 8])],
 }
+
+
+# Instruments that play on one row of their own, so a phrase never jumps from L to Q (the note would cut).
+# theme -> {instrument name: keys, low to high}
+NUMBER_ROW = ["grave"] + ROW_NUMBERS  # ` 1 2 3 4 5 6 7 8 9 0 - =
+THEME_KEYS = {
+    "heaven pierce her - order.mid": {"Cello": NUMBER_ROW},
+}
+
+
+def theme_row_keys(path, profile):
+    """The keys this theme instrument uses instead of the usual A..L, Q..P (None: the usual ones)."""
+    keys = THEME_KEYS.get(theme_key(path), {}).get(profile.get("name", "").split(" (")[0]) if path else None
+    return keys if keys and len(profile.get("slots", [])) <= len(keys) else None
+
+
+def apply_theme_keys(path, profile):
+    """Moves an instrument still on the default keys to its own row. Returns True if something changed."""
+    keys = theme_row_keys(path, profile)
+    slots = profile.get("slots", [])
+    if not keys or [s["key"] for s in slots] == keys[:len(slots)]:
+        return False
+    if [s["key"] for s in slots] != keys_for_notes(len(slots)):  # keys chosen by hand: leave them
+        return False
+    for sl, k in zip(sorted(slots, key=lambda sl: sl.get("midi", 0)), keys):
+        sl["key"] = k
+    return True
 
 
 def _notes_for(st, low, high, count_max):

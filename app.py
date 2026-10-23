@@ -47,7 +47,7 @@ from audio import Engine, SequenceVoice  # noqa: E402
 import threading  # noqa: E402
 import drum_patterns  # noqa: E402
 from instruments import DRUM_GROUPS, DRUM_PIECES, INSTRUMENTS, SR, DrumKit, app_data_dir, drum_group  # noqa: E402
-from profiles import (KEY_POSITIONS, LAYOUTS, MAX_KEYS, theme_key, theme_profiles, default_profiles, free_key, drum_part_profiles, merged_profile, theme_merges,
+from profiles import (KEY_POSITIONS, apply_theme_keys, LAYOUTS, MAX_KEYS, theme_key, theme_profiles, default_profiles, free_key, drum_part_profiles, merged_profile, theme_merges,
                       track_pitch_counts, all_notes, note_slots,  # noqa: E402
                       is_drums, load_profiles, piano_layout, save_profiles, scale_notes,
                       profile_runs, strip_run_notes)
@@ -69,6 +69,8 @@ KEY_LABELS = {
     "bracketleft": "[", "bracketright": "]", "backslash": "\\", "minus": "-",
     "equal": "=", "grave": "`", "space": "Space", "ntilde": "Ñ",
 }
+# keysyms some layouts send for the same physical key (` is a dead key on many of them)
+KEY_ALIASES = {"dead_grave": "grave", "quoteleft": "grave"}
 RESERVED_KEYS = {"space", "return", "up", "down", "left", "right", "escape", "tab"}
 
 BG = "#1e1f24"
@@ -340,6 +342,7 @@ class MainMenu(tk.Tk):
         self._merge_theme_tracks()
         self._complete_theme_notes()
         self._strip_run_notes()
+        self._theme_keys()
         self.profiles = self._visible()
         self.show_menu()
 
@@ -406,6 +409,17 @@ class MainMenu(tk.Tk):
                     changed |= strip_run_notes(self.theme_path, p)
                 except Exception as exc:
                     print("bajadas:", exc, flush=True)
+        if changed:
+            save_profiles(PROFILES_FILE, self.all_profiles)
+
+    def _theme_keys(self):
+        """Instruments with a row of their own (the Cello of Order on ` 1..0 - =) move there once."""
+        if not self.theme_path or not self.theme_key:
+            return
+        changed = False
+        for p in self.all_profiles:
+            if p.get("theme") == self.theme_key and not is_drums(p["sound"]):
+                changed |= apply_theme_keys(self.theme_path, p)
         if changed:
             save_profiles(PROFILES_FILE, self.all_profiles)
 
@@ -867,6 +881,7 @@ class EditorWindow(tk.Toplevel):
             return
         i = self.capturing
         k = event.keysym.lower()
+        k = KEY_ALIASES.get(k, k)
         if k in RESERVED_KEYS or k.startswith(("shift", "control", "alt", "super", "caps", "win", "meta")):
             self._stop_capture()
             self.status.config(text="Esa tecla está reservada (Espacio, Enter, flechas, Esc, Tab).")
@@ -2133,6 +2148,7 @@ class PlayWindow(tk.Toplevel):
         if isinstance(event.widget, (tk.Entry, ttk.Entry)):  # typing the BPM
             return
         k = event.keysym.lower()
+        k = KEY_ALIASES.get(k, k)
         if k in self.pending_release:  # Linux auto-repeat: release+press pair -> ignore
             self.after_cancel(self.pending_release.pop(k))
             return
@@ -2159,6 +2175,7 @@ class PlayWindow(tk.Toplevel):
 
     def _on_release(self, event):
         k = event.keysym.lower()
+        k = KEY_ALIASES.get(k, k)
         if k not in self.held:
             return
         self.pending_release[k] = self.after(30, lambda: self._really_release(k))
