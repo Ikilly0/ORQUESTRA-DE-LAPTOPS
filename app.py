@@ -45,6 +45,7 @@ from tkinter import ttk  # noqa: E402
 
 from audio import Engine, SequenceVoice  # noqa: E402
 import threading  # noqa: E402
+import drum_patterns  # noqa: E402
 from instruments import DRUM_GROUPS, DRUM_PIECES, INSTRUMENTS, SR, DrumKit, app_data_dir, drum_group  # noqa: E402
 from profiles import (KEY_POSITIONS, LAYOUTS, MAX_KEYS, theme_key, theme_profiles, default_profiles, free_key, drum_part_profiles, merged_profile, theme_merges,
                       track_pitch_counts, all_notes, note_slots,  # noqa: E402
@@ -994,16 +995,20 @@ class PlayChooser(tk.Toplevel):
         self.band_radio = ttk.Radiobutton(sp, text="Práctica con banda: suena el resto de la banda y tú tocas tu "
                                           "instrumento", value="band", variable=self.mode_var, command=self._update)
         self.band_radio.grid(row=3, column=0, columnspan=3, sticky="w")
-        ttk.Label(sp, text="Pista:", style="Muted.TLabel").grid(row=4, column=0, sticky="e", pady=(10, 0))
+        self.pattern_radio = ttk.Radiobutton(sp, text="Percusión por patrones: toda la batería en trozos "
+                                             "estándar; tú eliges qué patrón suena (solo batería)",
+                                             value="patterns", variable=self.mode_var, command=self._update)
+        self.pattern_radio.grid(row=4, column=0, columnspan=3, sticky="w")
+        ttk.Label(sp, text="Pista:", style="Muted.TLabel").grid(row=5, column=0, sticky="e", pady=(10, 0))
         self.track_var = tk.StringVar()
         self.track_box = ttk.Combobox(sp, textvariable=self.track_var, state="readonly", width=42,
                                       values=[NO_TRACK] + [f"{t['name'][:28]}  ({t['instrument']})"
                                                            for t in self.tracks])
-        self.track_box.grid(row=4, column=1, sticky="w", padx=8, pady=(10, 0))
+        self.track_box.grid(row=5, column=1, sticky="w", padx=8, pady=(10, 0))
         self.track_box.bind("<<ComboboxSelected>>", lambda _e: self._update())
-        ttk.Label(sp, text="Tempo:", style="Muted.TLabel").grid(row=5, column=0, sticky="e", pady=(8, 0))
+        ttk.Label(sp, text="Tempo:", style="Muted.TLabel").grid(row=6, column=0, sticky="e", pady=(8, 0))
         trow = ttk.Frame(sp, style="Panel.TFrame")
-        trow.grid(row=5, column=1, columnspan=2, sticky="w", padx=8, pady=(8, 0))
+        trow.grid(row=6, column=1, columnspan=2, sticky="w", padx=8, pady=(8, 0))
         base = int(round(self.song.bpm)) if self.song else 120
         self.tempo_var = tk.StringVar(value=str(base))
         self.tempo_spin = ttk.Spinbox(trow, from_=20, to=400, textvariable=self.tempo_var, width=6)
@@ -1063,11 +1068,24 @@ class PlayChooser(tk.Toplevel):
             w.state(["!disabled"] if has_song else ["disabled"])
         self.auto_radio.state(["!disabled"] if self.tracks else ["disabled"])
         self.band_radio.state(["!disabled"] if self.tracks else ["disabled"])
+        drum_theme = bool(self.tracks) and any(t["drums"] for t in self.tracks)
+        can_patterns = drum_theme and p is not None and is_drums(p["sound"])
+        self.pattern_radio.state(["!disabled"] if can_patterns else ["disabled"])
+        if self.mode_var.get() == "patterns" and not can_patterns:
+            self.mode_var.set("manual")
+        patterns = self.mode_var.get() == "patterns"
         auto = self.mode_var.get() == "auto"
         band = self.mode_var.get() == "band"
         track = self._selected_track()
         ok = p is not None and len(p["slots"]) > 0
         msg = ""
+        if patterns:
+            self.hint.config(text="La batería del tema, descompuesta en patrones de 2 compases (ritmos, redobles, "
+                                  "ráfagas, fills). Das Empezar y eliges con 1 a 0 qué patrón suena; la guía "
+                                  "muestra cuál usa el tema. Suena el resto de la banda.")
+            self.go.state(["!disabled"] if ok else ["disabled"])
+            self.status.config(text="")
+            return
         if (auto or band) and track is None:
             ok, msg = False, ("Automático" if auto else "Práctica con banda") + " necesita una pista."
         if not has_song:
@@ -1100,6 +1118,9 @@ class PlayChooser(tk.Toplevel):
         except ValueError:
             bpm = self.song.bpm if self.song else 120
         self.withdraw()
+        if self.mode_var.get() == "patterns":
+            PatternWindow(self, self.engine, p, bpm=bpm)
+            return
         PlayWindow(self, self.engine, p, song=self.song, track=self._selected_track() if self.song else None,
                    auto=auto, bpm=bpm, band=self.mode_var.get() == "band")
 
@@ -2484,6 +2505,424 @@ class ListenWindow(tk.Toplevel):
         self.engine.clear_scheduled()
         self.destroy()
         self.menu.back_here()
+
+
+# ==========================================================================
+# Percusión por patrones
+# ==========================================================================
+PATTERN_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+LIVE_PIECES = [("a", "kick"), ("s", "snare"), ("d", "hat"), ("f", "hat_open"), ("g", "crash"),
+               ("h", "ride"), ("j", "tom_hi"), ("k", "tom_mid"), ("l", "tom_floor")]
+GRID_ROWS = [("Platillos", ("crash", "ride", "ride_bell")), ("Hi-hat", ("hat", "hat_open")), ("Caja", ("snare",)),
+             ("Toms", ("tom_hi", "tom_mid", "tom_floor")), ("Bombo", ("kick", "kick2"))]
+PATTERN_COLORS = ["#5a5d66", "#3f8fd2", "#d2a03f", "#c0566a", "#e0763a", "#8a6fd0", "#4fb0a0",
+                  "#7fb04a", "#d0567f", "#d23f3f"]
+
+
+class PatternWindow(tk.Toplevel):
+    """The whole drum kit as a few standard 2-bar patterns taken from the song. You start the clock and
+    choose which pattern plays (keys 1..0); the change comes in on the next bar. The guide below shows
+    which pattern the song uses in each moment; when you pick that one, you hear the song's exact bar."""
+
+    AHEAD = 4.0  # seconds of guide visible above the line
+
+    def __init__(self, chooser, engine, profile, bpm=None):
+        super().__init__(chooser)
+        self.chooser = chooser
+        self.menu = chooser.menu
+        self.engine = engine
+        self.profile = profile
+        self.song = chooser.song
+        self.kit = instrument_by_id("drums")
+        self.info = drum_patterns.analyse(self.menu.theme_path)
+        self.patterns = self.info["patterns"]
+        self.guide = self.info["guide"]
+        self.shift = self.info["shift"]
+        self.spb = self.info["slots_per_bar"]
+        tr = self.info["track"]
+        self.real = drum_patterns._bars(self.song, track_events(self.menu.theme_path, tr), self.shift,
+                                        self.song.meter)  # the song's exact bars, for a correct choice
+        self.vis_delay = engine.output_delay()
+        self.running = False
+        self.current = 0      # pattern playing
+        self.queued = None    # pattern chosen, comes in on the next bar
+        self.next_bar = None  # next bar to hand to the engine
+        self.sec0 = 0.0
+        self.countin = 0.0
+        self.speed = 1.0
+        self.gain = [0.9]
+        self.band_gain = [0.5]
+        self.held = {}
+        self.pending_release = {}
+        self.hits_ok = 0
+        self.bars_done = 0
+        self.band_notes = self._load_band()
+        self.band_starts = [n[0] for n in self.band_notes]
+        self.band_ptr = 0
+        threading.Thread(target=DrumKit.warm, daemon=True).start()
+        self.configure(bg=BG)
+        self.title(f"Percusión por patrones - {self.menu.theme_name}")
+        self.protocol("WM_DELETE_WINDOW", self.back)
+        self._build(bpm)
+        self.bind("<KeyPress>", self._on_press)
+        self.bind("<KeyRelease>", self._on_release)
+        maximize(self)
+        self.focus_force()
+        self._tick_id = None
+        self._tick()
+
+    # ---- the band (everything but the drums) ----
+    def _load_band(self):
+        song, path = self.song, self.menu.theme_path
+        drum_tr = self.info["track"]
+        notes = []
+        for p in self.menu.profiles:
+            if p.get("theme") != self.menu.theme_key or not isinstance(p.get("track"), int):
+                continue
+            tracks = [p["track"]] + p.get("extra_tracks", [])
+            if drum_tr in tracks:
+                continue  # the drums are me
+            ins = instrument_by_id(p["sound"])
+            for tr in tracks:
+                for b0, b1, pitch, _ch in track_events(path, tr):
+                    notes.append((song.beat_to_seconds(b0 - song.offset), song.beat_to_seconds(b1 - song.offset),
+                                  pitch, ins))
+        notes.sort(key=lambda n: n[0])
+        return notes
+
+    # ---- interface ----
+    def _build(self, bpm):
+        root = ttk.Frame(self, padding=14)
+        root.pack(fill="both", expand=True)
+        top = ttk.Frame(root)
+        top.pack(fill="x")
+        ttk.Label(top, text="Percusión por patrones", style="Title.TLabel").pack(side="left")
+        ttk.Label(top, text=f"   {self.menu.theme_name}", style="BgMuted.TLabel").pack(side="left")
+        ttk.Button(top, text="← Volver", command=self.back, takefocus=False).pack(side="right")
+
+        ctl = ttk.Frame(root)
+        ctl.pack(fill="x", pady=(10, 4))
+        self.start_button = ttk.Button(ctl, text="▶ Empezar  (Enter)", style="Go.TButton",
+                                       command=self._toggle, takefocus=False)
+        self.start_button.pack(side="left")
+        ttk.Label(ctl, text="Desde:").pack(side="left", padx=(16, 4))
+        self.sections = [(lab.replace("Bar", "Compás"), b) for lab, b in self.song.sections(8)]
+        start_lab = next((lab for lab, b in self.sections if self.song.bar_of(b) >= 33), self.sections[0][0])
+        self.section_var = tk.StringVar(value=start_lab)
+        ttk.Combobox(ctl, textvariable=self.section_var, values=[x[0] for x in self.sections], width=18,
+                     state="readonly", takefocus=False).pack(side="left")
+        ttk.Label(ctl, text="BPM:").pack(side="left", padx=(16, 4))
+        self.bpm_var = tk.StringVar(value=str(int(round(bpm or self.song.bpm))))
+        ttk.Spinbox(ctl, from_=40, to=300, textvariable=self.bpm_var, width=5, takefocus=False).pack(side="left")
+        base = int(round(self.song.bpm))
+        for pct in (50, 75, 100):
+            ttk.Button(ctl, text=f"{pct}%", width=5, takefocus=False,
+                       command=lambda pct=pct: self.bpm_var.set(str(round(base * pct / 100)))).pack(side="left",
+                                                                                                padx=2)
+        self.band_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(ctl, text="Banda", variable=self.band_var, takefocus=False).pack(side="left", padx=(16, 4))
+        self.band_vol = tk.IntVar(value=60)
+        ttk.Scale(ctl, from_=0, to=100, orient="horizontal", length=120, variable=self.band_vol,
+                  command=lambda _v: self._volumes()).pack(side="left")
+        ttk.Label(ctl, text="  Batería").pack(side="left", padx=(12, 4))
+        self.kit_vol = tk.IntVar(value=80)
+        ttk.Scale(ctl, from_=0, to=100, orient="horizontal", length=120, variable=self.kit_vol,
+                  command=lambda _v: self._volumes()).pack(side="left")
+        self.click_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(ctl, text="Clic", variable=self.click_var, takefocus=False).pack(side="left", padx=12)
+        self._volumes()
+
+        self.status = ttk.Label(root, text="", font=("TkDefaultFont", 13, "bold"))
+        self.status.pack(anchor="w", pady=(6, 0))
+        ttk.Label(root, text="Elige el patrón con 1 a 0: entra en el compás siguiente. Abajo, la guía muestra "
+                             "qué patrón usa el tema; si eliges ese, suena el compás exacto del tema.   "
+                             "Golpes en vivo: A bombo · S caja · D hi-hat · F hi-hat abierto · G crash · "
+                             "H ride · J K L toms (mantén = redoble).",
+                  style="BgMuted.TLabel", wraplength=1500, justify="left").pack(anchor="w", pady=(2, 8))
+
+        cards = ttk.Frame(root)
+        cards.pack(fill="x")
+        self.cards = []
+        for i, p in enumerate(self.patterns):
+            c = tk.Canvas(cards, height=128, bg=PANEL, highlightthickness=3, highlightbackground=PANEL)
+            c.grid(row=i // 5, column=i % 5, sticky="ew", padx=4, pady=4)
+            cards.columnconfigure(i % 5, weight=1, uniform="card")
+            c.bind("<Configure>", lambda _e, i=i: self._draw_card(i))
+            c.bind("<Button-1>", lambda _e, i=i: self._choose(i))
+            self.cards.append(c)
+
+        box = ttk.Frame(root, style="Panel.TFrame", padding=6)
+        box.pack(fill="both", expand=True, pady=(8, 0))
+        self.guide_cv = tk.Canvas(box, bg="#16171b", highlightthickness=0, height=260)
+        self.guide_cv.pack(fill="both", expand=True)
+        self._guide_items = []
+        self._card_state = {}
+
+    def _draw_card(self, i):
+        c, p = self.cards[i], self.patterns[i]
+        c.delete("all")
+        w = max(c.winfo_width(), 120)
+        color = PATTERN_COLORS[i % len(PATTERN_COLORS)]
+        c.create_rectangle(0, 0, 8, 128, fill=color, width=0)
+        c.create_text(16, 14, text=f"{PATTERN_KEYS[i]}   {p.name}", anchor="w", fill=FG,
+                      font=("TkDefaultFont", 11, "bold"))
+        n = self.spb * drum_patterns.UNIT_BARS
+        x0, x1, y0, rh = 16, w - 10, 32, 15
+        hits = set(p.hits)
+        for r, (label, pieces) in enumerate(GRID_ROWS):
+            y = y0 + r * rh
+            c.create_text(x0, y + rh / 2, text=label, anchor="w", fill=MUTED, font=("TkDefaultFont", 7))
+            gx0 = x0 + 52
+            cell = (x1 - gx0) / n
+            for k in range(0, n, self.spb // self.song.meter * 1):  # beat marks
+                c.create_line(gx0 + k * cell, y + 2, gx0 + k * cell, y + rh - 2,
+                              fill="#3a3c44" if k % self.spb else "#6a6c74")
+            for slot in range(n):
+                if any((slot, pc) in hits for pc in pieces):
+                    cx = gx0 + slot * cell
+                    c.create_rectangle(cx, y + 3, cx + max(2, cell - 1), y + rh - 3, fill=color, width=0)
+        c.create_text(16, 118, text=f"{len(p.units)} trozos de 2 compases en el tema", anchor="w", fill=MUTED,
+                      font=("TkDefaultFont", 8))
+        self._card_state.pop(i, None)
+
+    def _volumes(self):
+        v = self.band_vol.get() if hasattr(self, "band_vol") else 60
+        self.band_gain[0] = 0.55 * (v / 60.0) ** 1.5 if v > 0 else 0.0
+        k = self.kit_vol.get() if hasattr(self, "kit_vol") else 80
+        self.gain[0] = (k / 80.0) ** 1.5 if k > 0 else 0.0
+
+    # ---- choosing ----
+    def _choose(self, i):
+        if not 0 <= i < len(self.patterns):
+            return
+        if self.running:
+            self.queued = i
+        else:
+            self.current, self.queued = i, None
+        self.focus_set()
+
+    def _on_press(self, event):
+        k = event.keysym.lower()
+        if k in self.pending_release:  # Linux auto-repeat
+            self.after_cancel(self.pending_release.pop(k))
+            return "break"
+        if k in self.held:
+            return "break"
+        if k == "return":
+            self._toggle()
+        elif k in PATTERN_KEYS:
+            self._choose(PATTERN_KEYS.index(k))
+        else:
+            piece = dict(LIVE_PIECES).get(k)
+            if piece:
+                tag = ("live", k)
+                self.held[k] = tag
+                bpm = self._bpm_now()
+                self.engine.voice_on(tag, GainVoice(self.kit.voice(piece=piece, roll=int(SR * 60 / bpm / 4)),
+                                                    self.gain, 0))
+        return "break"
+
+    def _on_release(self, event):
+        k = event.keysym.lower()
+        if k in self.held:
+            self.pending_release[k] = self.after(30, lambda: self._really_release(k))
+
+    def _really_release(self, k):
+        self.pending_release.pop(k, None)
+        tag = self.held.pop(k, None)
+        if tag:
+            self.engine.note_off(tag)
+
+    # ---- transport ----
+    def _speed(self):
+        try:
+            return max(0.25, min(4.0, float(self.bpm_var.get()) / self.song.bpm))
+        except (ValueError, ZeroDivisionError):
+            return 1.0
+
+    def _bpm_now(self):
+        now = self._song_now()
+        beat = self.song.seconds_to_beat(now) if now is not None else 0
+        return max(40.0, min(300.0, self.song.bpm_at(beat) * (self.speed if self.running else self._speed())))
+
+    def _bar_sec(self, bar, slot=0):
+        return self.song.beat_to_seconds(self.song.bar_start(bar) + self.shift + slot / drum_patterns.SLOTS_PER_BEAT)
+
+    def _to_sample(self, sec):
+        return int(round((self.countin + (sec - self.sec0) / self.speed) * SR))
+
+    def _song_now(self, visual=False):
+        t = self.engine.clock_seconds() if self.running else None
+        if t is None:
+            return None
+        if visual:
+            t = max(0.0, t - self.vis_delay)
+        return self.sec0 + (t - self.countin) * self.speed
+
+    def _toggle(self):
+        if self.running:
+            self._stop()
+            return
+        self.speed = self._speed()
+        bar = self.song.bar_of(dict(self.sections).get(self.section_var.get(), 0.0) + 1e-6)
+        bar = max(1, bar)
+        self.sec0 = self._bar_sec(bar)
+        beat_len = 60.0 / (self.song.bpm_at(self.song.seconds_to_beat(self.sec0)) * self.speed)
+        self.countin = self.song.meter * beat_len
+        clicks = [(int(round(i * beat_len * SR)), i == 0) for i in range(self.song.meter)]
+        b = int(np.ceil(self.song.seconds_to_beat(self.sec0) - 1e-6))
+        while b <= self.song.total_beats:  # metronome clicks (heard only with Clic on)
+            clicks.append((self._to_sample(self.song.beat_to_seconds(b)),
+                           (b - self.song.phase - self.shift) % self.song.meter == 0))
+            b += 1
+        self.engine.start_clock(clicks, audible=True)
+        self.next_bar = bar
+        self.band_ptr = bisect_left(self.band_starts, self.sec0 - 1e-6)
+        if self.queued is not None:
+            self.current, self.queued = self.queued, None
+        self.hits_ok = self.bars_done = 0
+        self.running = True
+        self.start_button.config(text="■ Detener  (Enter)")
+
+    def _stop(self):
+        self.running = False
+        self.engine.stop_clock()
+        self.engine.all_off()
+        self.start_button.config(text="▶ Empezar  (Enter)")
+
+    def _schedule(self):
+        now = self._song_now()
+        if now is None:
+            return
+        horizon = now + 0.35 * self.speed
+        events = []
+        last = self.info["last"]
+        while self.next_bar is not None and self.next_bar <= last and self._bar_sec(self.next_bar) < horizon:
+            bar = self.next_bar
+            if self.queued is not None:  # the change comes in on this bar
+                self.current, self.queued = self.queued, None
+            pat = self.patterns[self.current]
+            unit = drum_patterns.unit_of(self.info, bar)
+            half = bar - unit
+            song_pid = self.guide.get(unit)
+            if song_pid == self.current:  # the right pattern: the song's own bar
+                hits = sorted(self.real.get(bar, ()))
+                self.hits_ok += 1
+            else:
+                hits = [(s - half * self.spb, pc) for s, pc in pat.hits if half * self.spb <= s < (half + 1) * self.spb]
+            self.bars_done += 1
+            for slot, piece in hits:
+                pos = self._to_sample(self._bar_sec(bar, slot))
+                tag = ("pat", bar, slot, piece)
+                events += [(pos, "on", tag, GainVoice(self.kit.voice(piece=piece), self.gain, 0))]
+            self.next_bar += 1
+        if self.band_var.get():
+            while self.band_ptr < len(self.band_notes) and self.band_notes[self.band_ptr][0] < horizon:
+                on, off, pitch, ins = self.band_notes[self.band_ptr]
+                tag = ("band", self.band_ptr)
+                s_on, s_off = self._to_sample(on), self._to_sample(off)
+                events += [(s_on, "on", tag, GainVoice(ins.voice(freq=freq_of(pitch)), self.band_gain, 0)),
+                           (max(s_off, s_on + 1), "off", tag, None)]
+                self.band_ptr += 1
+        else:
+            self.band_ptr = bisect_left(self.band_starts, horizon)
+        if events:
+            self.engine.schedule(events)
+        if self.next_bar is not None and self.next_bar > last and now > self._bar_sec(last) + 2:
+            self._stop()
+
+    # ---- drawing ----
+    def _tick(self):
+        if self.running:
+            if self.engine.clock_seconds() is None:
+                self._stop()
+            else:
+                self.engine.metro_audible = self.click_var.get() or (self._song_now() or 0) < self.sec0
+                self._schedule()
+        self._draw()
+        if self._tick_id:
+            self.after_cancel(self._tick_id)
+        self._tick_id = self.after(33, self._tick)
+
+    def _draw(self):
+        now = self._song_now(visual=True)
+        ref = now if now is not None else self._bar_sec(max(1, self.song.bar_of(
+            dict(self.sections).get(self.section_var.get(), 0.0) + 1e-6)))
+        beat = self.song.seconds_to_beat(ref) - self.shift
+        bar = max(1, self.song.bar_of(beat + 1e-6))
+        unit = drum_patterns.unit_of(self.info, bar)
+        song_pid = self.guide.get(unit)
+        cur = self.patterns[self.current].name
+        txt = f"Compás {bar}    ·    Suena: {PATTERN_KEYS[self.current]} {cur}"
+        if self.queued is not None:
+            txt += f"    ·    Entra: {PATTERN_KEYS[self.queued]} {self.patterns[self.queued].name}"
+        if song_pid is not None:
+            txt += f"    ·    El tema usa: {PATTERN_KEYS[song_pid]} {self.patterns[song_pid].name}"
+        if self.running and self.bars_done:
+            txt += f"    ·    Acertados {round(100 * self.hits_ok / self.bars_done)}%"
+        if getattr(self, "_status_txt", None) != txt:
+            self.status.config(text=txt)
+            self._status_txt = txt
+        for i, c in enumerate(self.cards):  # green = playing, yellow = coming in, white = the song's choice
+            col = ("#3fb66b" if i == self.current else "#f0c040" if i == self.queued
+                   else "#e8e8ea" if i == song_pid else PANEL)
+            if self._card_state.get(i) != col:
+                c.config(highlightbackground=col)
+                self._card_state[i] = col
+        self._draw_guide(ref)
+
+    def _draw_guide(self, now):
+        cv = self.guide_cv
+        w, h = max(cv.winfo_width(), 200), max(cv.winfo_height(), 120)
+        n = len(self.patterns)
+        lane = w / n
+        y_hit = h - 34
+        span = self.AHEAD * (self.speed if self.running else self._speed())
+        pps = y_hit / span
+        if getattr(self, "_guide_sig", None) != (w, h):
+            cv.delete("all")
+            self._guide_items = []
+            for i, p in enumerate(self.patterns):
+                cv.create_rectangle(i * lane, 0, (i + 1) * lane, y_hit, width=0, tags="lanes",
+                                    fill="#1b1c21" if i % 2 == 0 else "#16171b")
+                cv.create_text(i * lane + lane / 2, y_hit + 17, text=f"{PATTERN_KEYS[i]}  {p.name}",
+                               fill=FG, font=("TkDefaultFont", 9, "bold"), width=lane - 6, tags="keys")
+            cv.create_line(0, y_hit, w, y_hit, fill="#f0f0f0", width=3, tags="keys")
+            self._guide_sig = (w, h)
+        boxes = []
+        first, step = self.info["first"], self.info["unit"]
+        bar0 = max(first, self.song.bar_of(self.song.seconds_to_beat(now) - self.shift) - step)
+        u = drum_patterns.unit_of(self.info, bar0)
+        while u <= self.info["last"]:
+            t0, t1 = self._bar_sec(u), self._bar_sec(u + step)
+            if t0 > now + span:
+                break
+            pid = self.guide.get(u)
+            if t1 >= now and pid is not None and self.patterns[pid].kind != "silence":
+                y_on = y_hit - (t0 - now) * pps
+                y_off = y_hit - (t1 - now) * pps + 3
+                fill = PATTERN_COLORS[pid % len(PATTERN_COLORS)]
+                boxes.append((pid * lane + 4, max(0, y_off), (pid + 1) * lane - 4, min(y_hit, y_on), fill))
+            u += step
+        pool = self._guide_items
+        while len(pool) < len(boxes):
+            pool.append(cv.create_rectangle(0, 0, 0, 0, width=0, state="hidden"))
+            cv.tag_raise(pool[-1], "lanes")  # above every lane background, under the labels
+        for item, b in zip(pool, boxes):
+            cv.coords(item, *b[:4])
+            cv.itemconfig(item, fill=b[4], state="normal")
+        for item in pool[len(boxes):]:
+            cv.itemconfig(item, state="hidden")
+
+    def back(self):
+        if self._tick_id:
+            self.after_cancel(self._tick_id)
+        for k in list(self.held):
+            self._really_release(k)
+        self._stop()
+        self.engine.clear_scheduled()
+        self.destroy()
+        self.chooser.back_from_play()
 
 
 def main():

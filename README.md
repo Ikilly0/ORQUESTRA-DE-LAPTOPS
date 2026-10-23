@@ -60,6 +60,14 @@ La ventana se abre maximizada; **F11** alterna pantalla completa (en Mac tambié
      una columna por instrumento con *Suena* y un fader de volumen (se guarda por tema), BPM, *Desde* y barra
      para saltar.
 
+### Percusión por patrones
+En **Tocar instrumento**, con un instrumento de batería, el modo **Percusión por patrones** convierte la batería
+del tema en **10 patrones estándar de 2 compases** sacados del MIDI (`drum_patterns.py`): silencio, ritmos con
+ride, fills de toms, redobles de caja, hi-hat rápido, ráfaga de platillos, ráfaga de doble bombo, etc.
+Le das **Empezar** y eliges con **1…0** qué patrón suena; el cambio entra en el compás siguiente. La guía de
+abajo muestra qué patrón usa el tema en cada momento; si eliges ese, suena el compás exacto del tema (y sube
+"Acertados"). Las letras A…L dan golpes sueltos encima (mantener = redoble). La banda suena de fondo.
+
 ### Batería
 La pista de batería se divide en dos instrumentos: **tambores** (bombo, bombo 2, caja, toms) y
 **platillos** (hi-hat, hi-hat abierto, ride, campana del ride, crash). Para usar grabaciones reales en vez de
