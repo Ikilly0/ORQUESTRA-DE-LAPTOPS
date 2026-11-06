@@ -1,0 +1,12 @@
+0:00.0  Aditiva: el vaso tal como se midió
+0:04.0  Aditiva: decaimiento ×1 → ×8
+0:12.0  Aditiva: estiramiento 0,6 → 1,4 (decaimiento ×3)
+0:18.0  Aditiva: brillo −18 → +9 dB/oct
+0:23.0  Aditiva: ataque 0 → 150 ms
+0:28.5  Aditiva: vaso transpuesto a 330–660 Hz (melodía)
+0:34.0  Modal: el vaso tal como se midió
+0:38.0  Modal: dureza 0 → 1
+0:44.0  Modal: decaimiento ×0,2 → ×10 (Q de los filtros)
+0:52.0  Modal: golpe directo 0 → 1
+0:57.0  Modal: redoble acelerando sobre resonadores largos (decaimiento ×6)
+1:03.0  Modal: vaso transpuesto a 220 Hz, golpe blando (decaimiento ×8)

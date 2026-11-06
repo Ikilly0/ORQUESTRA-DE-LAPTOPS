@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 330" font-family="system-ui,sans-serif" font-size="13">
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#555"/></marker></defs>
+  <style>rect{fill:#f3f6fb;stroke:#4a76c9;rx:6}.m{fill:#eef8ee;stroke:#3a9a4a}.e{fill:#fdeee8;stroke:#c95a3a}line,path.l{stroke:#555;stroke-width:1.4;fill:none;marker-end:url(#a)}path.d{stroke-dasharray:5 4}text{fill:#222}.s{font-size:11px;fill:#666}</style>
+  <rect class="m" x="10" y="135" width="110" height="50"/><text x="65" y="157" text-anchor="middle">Micrófono</text><text x="65" y="173" text-anchor="middle" class="s">vaso golpeado</text>
+  <rect x="170" y="30" width="200" height="60"/><text x="270" y="52" text-anchor="middle">Seguidor de envolvente</text><text x="270" y="68" text-anchor="middle" class="s">|x| → un polo: ataque 2 ms,</text><text x="270" y="81" text-anchor="middle" class="s">liberación 80 ms (AudioWorklet)</text>
+  <rect x="420" y="30" width="220" height="60"/><text x="530" y="52" text-anchor="middle">Detector de ataques</text><text x="530" y="68" text-anchor="middle" class="s">env &gt; umbral (−45 dBFS) y &gt; 2× env. lenta</text><text x="530" y="81" text-anchor="middle" class="s">(300 ms); pico en 5 ms; 60 ms refractario</text>
+  <rect x="170" y="215" width="200" height="60"/><text x="270" y="237" text-anchor="middle">Centroide espectral</text><text x="270" y="253" text-anchor="middle" class="s">AnalyserNode FFT 2048,</text><text x="270" y="266" text-anchor="middle" class="s">Σ f·|X(f)| / Σ |X(f)|</text>
+  <rect x="420" y="215" width="220" height="60"/><text x="530" y="237" text-anchor="middle">Mapa a dureza</text><text x="530" y="253" text-anchor="middle" class="s">log: 1500 Hz → 0, 7000 Hz → 1</text><text x="530" y="266" text-anchor="middle" class="s">(modo continuo: pasabajos 1,5 × centroide)</text>
+  <rect class="e" x="700" y="110" width="190" height="100"/><text x="795" y="135" text-anchor="middle">Modelo modal</text><text x="795" y="155" text-anchor="middle" class="s">Disparo: golpear(vel, dureza)</text><text x="795" y="172" text-anchor="middle" class="s">vel = 8 × pico de envolvente</text><text x="795" y="192" text-anchor="middle" class="s">Continuo: ruido × env → banco</text>
+  <path class="l" d="M120,155 C145,155 145,60 168,60"/><path class="l" d="M120,165 C145,165 145,245 168,245"/>
+  <line x1="370" y1="60" x2="418" y2="60"/><line x1="370" y1="245" x2="418" y2="245"/>
+  <path class="l" d="M640,60 C670,60 680,130 698,135"/><path class="l" d="M640,245 C670,245 680,190 698,185"/>
+  <text x="660" y="100" class="s">ataque + nivel</text><text x="655" y="230" class="s">dureza</text>
+  <path class="l d" d="M370,75 C560,110 560,150 698,160"/><text x="480" y="128" class="s">envolvente continua (modo continuo)</text>
+  <text x="10" y="315" class="s">Grabación de la toma: canal izq. = micrófono, canal der. = salida del modelo (WAV estéreo 24 bit). Escuchar con audífonos.</text>
+</svg>

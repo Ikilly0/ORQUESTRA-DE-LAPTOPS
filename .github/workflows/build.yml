@@ -6,7 +6,7 @@ name: Construir la app
 on:
   push:
     branches: [main]
-    paths-ignore: ["T1-propuesta-de-obra/**", "**.md"]
+    paths-ignore: ["T1-propuesta-de-obra/**", "T2-metodos-de-sintesis/**", "**.md"]
   workflow_dispatch:
 
 permissions:

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T2 · Vaso de vidrio: aditiva y resonadores modales</title>
+<style>
+  body { font: 15px/1.45 system-ui, sans-serif; max-width: 1100px; margin: 1.5em auto; padding: 0 1em; color: #222; }
+  h1 { font-size: 1.4em; margin-bottom: .2em; } h2 { font-size: 1.1em; margin: 0 0 .5em; }
+  .modelos { display: grid; grid-template-columns: 1fr 1fr; gap: 1em; }
+  section { border: 1px solid #ccc; border-radius: 8px; padding: 1em; margin-bottom: 1em; }
+  label { display: grid; grid-template-columns: 11em 1fr 6.5em; gap: .5em; align-items: center; margin: .3em 0; font-size: .92em; }
+  label small { color: #666; } input[type=range] { width: 100%; }
+  button { font: inherit; padding: .4em .9em; margin: .3em .3em 0 0; border-radius: 6px; border: 1px solid #888; background: #f4f4f4; cursor: pointer; }
+  button.grande { font-size: 1.1em; background: #e5eefc; border-color: #4a76c9; }
+  button.rojo { background: #fde4e4; border-color: #c94a4a; }
+  .medidor { height: 10px; background: #eee; border-radius: 5px; overflow: hidden; margin: .4em 0; }
+  .medidor div { height: 100%; width: 0; background: #4a76c9; transition: width .05s; }
+  pre { background: #f6f6f6; padding: .6em; font-size: .85em; white-space: pre-wrap; }
+  .nota { color: #555; font-size: .9em; }
+  @media (max-width: 800px) { .modelos { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>Golpe a un vaso de vidrio: dos métodos de síntesis</h1>
+<p class="nota">Tarea 2, IEE2003 Orquesta de Laptops UC. Los dos modelos leen la tabla de modos medida en la grabación
+(<code>modos.js</code>); ninguno usa la grabación como audio. Atajos: <b>A</b> golpea la aditiva, <b>M</b> golpea el modal.</p>
+
+<div class="modelos">
+  <section id="secA"><h2>A · Síntesis aditiva</h2>
+    <div id="paramsA"></div>
+    <button class="grande" id="golpeA">Golpear (A)</button>
+    <button id="wavA">Descargar WAV de un golpe</button>
+    <button id="resetA">Valores medidos</button>
+  </section>
+  <section id="secM"><h2>B · Resonadores modales (ruido → banco de filtros)</h2>
+    <div id="paramsM"></div>
+    <button class="grande" id="golpeM">Golpear (M)</button>
+    <button id="wavM">Descargar WAV de un golpe</button>
+    <button id="resetM">Valores medidos</button>
+  </section>
+</div>
+
+<section><h2>Parte 3 · Render "más allá del original"</h2>
+  <button id="render">Renderizar (72 s) y descargar WAV</button>
+  <pre id="renderLog">Las marcas de tiempo aparecen aquí al renderizar.</pre>
+</section>
+
+<section><h2>Parte 4 · El modelo modal tocado por el vaso</h2>
+  <p class="nota">Usa audífonos, para que el micrófono no capte la salida. El navegador pedirá permiso para el micrófono.</p>
+  <button class="grande" id="mic">Activar micrófono</button>
+  Modo: <select id="modo"><option value="disparo">Disparo (cada golpe del vaso golpea el modelo)</option>
+                         <option value="continuo">Continuo (ruido × envolvente entra a los filtros)</option></select>
+  <div id="paramsE"></div>
+  <div>Envolvente de entrada: <div class="medidor"><div id="medEnv"></div></div></div>
+  <div id="estado" class="nota">—</div>
+  <button class="rojo" id="grabar" disabled>● Grabar toma (entrada izq. / salida der.)</button>
+</section>
+
+<script src="modos.js"></script>
+<script src="synth.js"></script>
+<script src="render.js"></script>
+<script src="escucha.js"></script>
+<script>
+let ctx, modal, cadena;
+const pA = defaults(PARAMS_ADITIVA), pM = defaults(PARAMS_MODAL);
+
+function audio() {
+  if (!ctx) { ctx = new AudioContext({ sampleRate: 48000 }); modal = new Modal(ctx, ctx.destination, pM); }
+  if (ctx.state === 'suspended') ctx.resume();
+  return ctx;
+}
+
+function sliders(div, P, valores, onCambio) {
+  div.innerHTML = '';
+  for (const k in P) {
+    const d = P[k], l = document.createElement('label');
+    const toPos = v => d.log ? Math.log(v / d.min) / Math.log(d.max / d.min) : (v - d.min) / (d.max - d.min);
+    const toVal = x => d.log ? d.min * Math.pow(d.max / d.min, x) : d.min + x * (d.max - d.min);
+    l.title = d.efecto;
+    l.innerHTML = `<span>${d.nombre}<br><small>${d.unidad}</small></span><input type=range min=0 max=1 step=0.001><output></output>`;
+    const r = l.querySelector('input'), o = l.querySelector('output');
+    const show = () => o.textContent = (+valores[k]).toPrecision(3);
+    r.value = toPos(valores[k]); show();
+    r.oninput = () => { valores[k] = toVal(+r.value); show(); onCambio && onCambio(); };
+    div.appendChild(l);
+  }
+}
+function pintar() {
+  sliders(paramsA, PARAMS_ADITIVA, pA);
+  sliders(paramsM, PARAMS_MODAL, pM, () => modal && modal.set(pM));
+}
+pintar();
+
+golpeA.onclick = () => { audio(); golpeAditiva(ctx, ctx.destination, ctx.currentTime + 0.005, pA); };
+golpeM.onclick = () => { audio(); modal.set(pM); modal.golpear(ctx.currentTime + 0.005); };
+resetA.onclick = () => { Object.assign(pA, defaults(PARAMS_ADITIVA)); pintar(); };
+resetM.onclick = () => { Object.assign(pM, defaults(PARAMS_MODAL)); modal && modal.set(pM); pintar(); };
+wavA.onclick = async () => descargar(wavBlob(await renderGolpe('aditiva', pA)), 'golpe-aditiva.wav');
+wavM.onclick = async () => descargar(wavBlob(await renderGolpe('modal', pM)), 'golpe-modal.wav');
+document.onkeydown = e => {
+  if (e.target.tagName === 'SELECT' || e.repeat) return;
+  if (e.key === 'a') golpeA.onclick(); if (e.key === 'm') golpeM.onclick();
+};
+
+render.onclick = async () => {
+  render.disabled = true; renderLog.textContent = 'Renderizando…';
+  const r = await renderParte3(); renderLog.textContent = r.log.join('\n');
+  descargar(r.blob, 'parte3-render.wav'); render.disabled = false;
+};
+
+// Parte 4
+const PARAMS_ESCUCHA = {
+  ataqueMs:     { nombre: 'Seguidor: ataque', min: 0.5, max: 50, unidad: 'ms', def: 2, log: true },
+  liberacionMs: { nombre: 'Seguidor: liberación', min: 10, max: 1000, unidad: 'ms', def: 80, log: true },
+  umbralDb:     { nombre: 'Umbral de ataque', min: -70, max: -10, unidad: 'dBFS', def: -45 },
+  centroMin:    { nombre: 'Centroide → dureza 0', min: 300, max: 5000, unidad: 'Hz', def: 1500, log: true },
+  centroMax:    { nombre: 'Centroide → dureza 1', min: 2000, max: 15000, unidad: 'Hz', def: 7000, log: true },
+};
+const pE = defaults(PARAMS_ESCUCHA);
+sliders(paramsE, PARAMS_ESCUCHA, pE, () => { if (cadena) { Object.assign(cadena.ajustes, pE); cadena.aplicar(); } });
+
+mic.onclick = async () => {
+  audio(); mic.disabled = true;
+  try {
+    cadena = new CadenaEscucha(ctx, modal, s => {
+      medEnv.style.width = Math.min(100, Math.max(0, (20 * Math.log10(s.nivel + 1e-9) + 70) / 70 * 100)) + '%';
+      if (s.ataque) estado.textContent = `Ataque: ${(20 * Math.log10(s.nivel)).toFixed(1)} dBFS, centroide ${s.centroide.toFixed(0)} Hz → dureza ${s.dureza.toFixed(2)}`;
+    });
+    Object.assign(cadena.ajustes, pE);
+    await cadena.iniciar(); cadena.modo = modo.value; cadena.aplicar();
+    mic.textContent = 'Micrófono activo'; grabar.disabled = false;
+  } catch (e) { estado.textContent = 'No se pudo abrir el micrófono: ' + e.message; mic.disabled = false; }
+};
+modo.onchange = () => { if (cadena) { cadena.modo = modo.value; cadena.aplicar(); } };
+let grabando = false;
+grabar.onclick = () => {
+  grabando = !grabando;
+  if (grabando) { cadena.grabar(true); grabar.textContent = '■ Detener y descargar'; }
+  else { descargar(cadena.grabar(false), 'parte4-toma-entrada-salida.wav'); grabar.textContent = '● Grabar toma (entrada izq. / salida der.)'; }
+};
+</script>
+</body>
+</html>

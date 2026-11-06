@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T2: Métodos de síntesis · Alvaro Bustos · Orquesta de Laptops UC</title>
+<style>
+  :root{ --bg:#0b0d10; --panel:#14181d; --line:#232a32; --tx:#dfe5ec; --dim:#8b97a6; --acc:#e04a3f; --warn:#e0b23f;
+    --mono: ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:15.5px/1.65 Georgia,serif}
+  main{max-width:900px;margin:0 auto;padding:36px 20px 80px}
+  h1{font-family:var(--mono);letter-spacing:.06em;font-size:22px;margin-bottom:2px}
+  h2{font-family:var(--mono);font-size:17px;margin:46px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
+  h3{font-size:16px;margin:26px 0 6px}
+  p.dim,.dim{color:var(--dim);font-size:14px}
+  a{color:var(--acc)}
+  nav{font:13px var(--mono);margin:18px 0}
+  nav a{margin-right:14px;white-space:nowrap}
+  img{max-width:100%;background:#fff;border-radius:6px;display:block;margin:10px 0}
+  audio{width:100%;margin:4px 0 2px}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin:10px 0}
+  th,td{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
+  th{background:var(--panel);font-family:var(--mono);font-size:12.5px}
+  td.n{text-align:right;font-family:var(--mono);font-size:13px;white-space:nowrap}
+  code{font-family:var(--mono);font-size:13px;background:var(--panel);padding:1px 4px;border-radius:3px}
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:14px 18px;margin:14px 0}
+  .pendiente{border:1px dashed var(--warn);color:var(--warn);border-radius:8px;padding:10px 14px;margin:12px 0;font-size:14px}
+  .ref{font-size:13px;color:var(--dim);border-left:3px solid var(--line);padding-left:10px;margin:8px 0}
+  .btn{display:inline-block;font:12.5px var(--mono);color:var(--bg);background:var(--acc);padding:8px 14px;border-radius:6px;text-decoration:none;font-weight:700;margin:4px 6px 4px 0}
+  .tres{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media(max-width:700px){.tres{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<p class="dim"><a href="../index.html">← Portafolio de Alvaro Bustos</a></p>
+<h1>T2 — MÉTODOS DE SÍNTESIS</h1>
+<p class="dim">IEE2003 Orquesta de Laptops UC · Segundo semestre 2026 · Fuente: un golpe a un vaso de vidrio ·
+Métodos: <b>síntesis aditiva</b> y <b>resonadores modales</b> (ruido filtrado por un banco de pasabandas).</p>
+
+<nav>
+  <a href="#p1">1 · La fuente</a><a href="#p2">2 · Dos métodos</a><a href="#comp">2 · Comparación</a>
+  <a href="#p3">3 · Más allá</a><a href="#p4">4 · Tocado por la fuente</a><a href="#doc">Código</a><a href="#ia">Uso de IA</a>
+</nav>
+
+<div class="card">
+  <a class="btn" href="modelos/index.html">▶ Abrir los modelos en el navegador</a>
+  <span class="dim">Chrome o Edge. Teclas <b>A</b> y <b>M</b> golpean cada modelo; la Parte 4 pide permiso de micrófono.</span>
+</div>
+
+<!-- ======================= PARTE 1 ======================= -->
+<h2 id="p1">Parte 1 · La fuente: cómo suena y de qué está hecha</h2>
+
+<h3>1.1 La grabación</h3>
+<audio controls src="grabacion/vaso-golpe.wav"></audio>
+<p class="dim"><a href="grabacion/vaso-golpe.wav" download>vaso-golpe.wav</a> · 48 kHz, 24 bit, mono · 0,90 s</p>
+<ul>
+  <li><b>Micrófono:</b> micrófono del headset beyerdynamic, a unos 2–3 cm del vaso.</li>
+  <li><b>Recinto:</b> sobre el escritorio, en una pieza.</li>
+  <li><b>Excitación:</b> golpe en el costado del vaso, a 3/4 de su altura, con el vaso apoyado en la mesa. <span class="pendiente" style="display:inline;padding:1px 6px">PENDIENTE: con qué se golpeó</span></li>
+  <li><b>Registro:</b> OBS Studio (48 kHz); se grabaron 11 golpes seguidos y se eligió el más fuerte (en 7,90 s), recortado a 0,90 s
+  y llevado a mono (los dos canales eran prácticamente idénticos, correlación 0,999) sin otro procesamiento. OBS guarda el audio en AAC,
+  así que el archivo original tiene compresión con pérdida; el WAV entregado es su decodificación sin cambios.</li>
+</ul>
+
+<h3>1.2 Descripción auditiva (escrita escuchando, antes de mirar el análisis)</h3>
+<blockquote class="card" style="margin-left:0">Rápido: sube rápidamente al peak y después resuena bien poco; es seco y de término rápido.
+Si fuera una nota, sería considerablemente aguda. Brillante y limpio: un solo golpe del vaso y la resonancia de este.</blockquote>
+<p class="dim">Escrita por el estudiante, escuchando, antes de ver el análisis.</p>
+
+<h3>1.3 Análisis</h3>
+<p>Herramienta: Python (NumPy, SciPy, Matplotlib), script <a href="analisis/analisis.py"><code>analisis/analisis.py</code></a>.
+Todas las figuras usan los mismos ajustes, y los mismos se aplican después a los modelos.</p>
+<ul>
+  <li><b>Espectrograma:</b> ventana Hann de 2048 muestras (42,7 ms), salto de 256 (5,3 ms). La resolución en frecuencia es de 23,4 Hz,
+  suficiente para separar los pares de modos cercanos (6960 y 7025 Hz están a 65 Hz). Una ventana de 512 los junta; una de 8192
+  (170 ms) dura casi lo mismo que todo el sonido audible y borra el ataque.</li>
+  <li><b>Espectros instantáneos:</b> Hann de 4096 (85 ms) justo después del ataque (0–85 ms) y en la extinción (250–335 ms).</li>
+  <li><b>Envolvente:</b> RMS en ventanas de 5 ms. <b>Caída de cada modo:</b> pasabanda de ±1,5 % alrededor del modo, envolvente
+  y recta ajustada en dB; la pendiente da el T60.</li>
+</ul>
+<img src="img/fuente-onda-envolvente.png" alt="Forma de onda y envolvente">
+<img src="img/fuente-espectrograma.png" alt="Espectrograma">
+<img src="img/fuente-espectros.png" alt="Espectros en el ataque y en la extinción">
+<img src="img/fuente-caida-modos.png" alt="Caída de cada modo">
+
+<table>
+  <tr><th>Modo</th><th>Frecuencia</th><th>Razón con el principal</th><th>Nivel inicial</th><th>T60</th></tr>
+  <tr><td>1 (principal)</td><td class="n">2725 Hz</td><td class="n">1,000</td><td class="n">0 dB</td><td class="n">0,43 s</td></tr>
+  <tr><td>2</td><td class="n">3489 Hz</td><td class="n">1,281</td><td class="n">−3,7 dB</td><td class="n">0,35 s</td></tr>
+  <tr><td>3</td><td class="n">5691 Hz</td><td class="n">2,089</td><td class="n">−7,7 dB</td><td class="n">0,21 s</td></tr>
+  <tr><td>4</td><td class="n">6763 Hz</td><td class="n">2,482</td><td class="n">−24,8 dB</td><td class="n">0,26 s</td></tr>
+  <tr><td>5a / 5b (par)</td><td class="n">6960 / 7025 Hz</td><td class="n">2,554 / 2,579</td><td class="n">−14,4 / −14,2 dB</td><td class="n">0,21 s</td></tr>
+  <tr><td>6a / 6b (par)</td><td class="n">10266 / 10367 Hz</td><td class="n">3,768 / 3,805</td><td class="n">−24,3 / −25,4 dB</td><td class="n">0,17 / 0,18 s</td></tr>
+</table>
+
+<h3>1.4 Explicación: qué rasgo del análisis da cuenta de qué se oye</h3>
+<table>
+  <tr><th>Lo que se oye (1.2)</th><th>Lo que lo explica en el análisis</th></tr>
+  <tr><td>"Sube rápidamente al peak"</td><td>La onda llega a su máximo en menos de 1 ms; el contacto aporta un ruido de banda ancha de ~5 ms que se funde con el ataque.</td></tr>
+  <tr><td>"Resuena bien poco, seco, de término rápido"</td><td>T60 de solo 0,17–0,43 s, y en ~0,2 s el vaso ya cayó ~25 dB, hasta el ruido de fondo de la grabación. El vaso apoyado en la mesa se amortigua por la base.</td></tr>
+  <tr><td>"Considerablemente aguda"</td><td>Modo principal en 2725 Hz (cerca de fa7), y nada tonal bajo 2,7 kHz.</td></tr>
+  <tr><td>"Brillante"</td><td>Modos fuertes en 3,5, 5,7 y 7 kHz (solo 4 a 15 dB bajo el principal) y hasta 10,4 kHz.</td></tr>
+  <tr><td>"Limpio, un solo golpe y su resonancia"</td><td>Pocos modos, bien separados, con caída exponencial simple; el zumbido de 50 Hz está a −46 dBFS, 35 dB bajo el pico, y casi no se percibe.</td></tr>
+</table>
+<p>En detalle:</p>
+<ul>
+  <li><b>Altura y carácter "de vidrio".</b> Casi toda la energía está en un modo de 2725 Hz (entre mi7 y fa7, unos 43 cents bajo fa7).
+  Los demás modos están en razón <b>1 : 1,28 : 2,09 : 2,48 : 2,55 : 3,77</b>, que no es una serie armónica (sería 1 : 2 : 3 : 4…).
+  Por eso se oye una altura, la del modo principal, pero no un tono "de instrumento": los otros parciales no se funden con ella.</li>
+  <li><b>Brillo.</b> Todo el contenido tonal está sobre 2,7 kHz y hay modos hasta 10,4 kHz; bajo 2 kHz no hay nada tonal,
+  solo ruido. Es un sonido agudo y brillante aunque el modo principal no sea muy alto.</li>
+  <li><b>Ataque instantáneo.</b> La onda pasa de silencio a su máximo en menos de 1 ms (recuadro de la primera figura). En el espectrograma,
+  el ataque es una franja vertical que llega hasta 16 kHz: es el <b>ruido del contacto</b> con el objeto que golpea, de unos 5 ms.</li>
+  <li><b>Extinción que se oscurece.</b> Cada modo cae en forma exponencial (recta en dB), y los agudos caen más rápido: T60 de 0,43 s a
+  2725 Hz, 0,21 s a 5,7–7 kHz y 0,17 s a 10,3 kHz. En el espectro de la extinción (250 ms) solo queda el modo principal.
+  El sonido empieza brillante y termina como un tono casi puro.</li>
+  <li><b>Pares de modos.</b> 6960/7025 Hz y 10266/10367 Hz son modos que en un vaso perfecto serían uno solo. La pequeña asimetría
+  del vaso real los separa, y al sonar juntos pulsan a 65 y 101 Hz. Eso agrega una aspereza en los agudos durante el ataque.</li>
+  <li><b>Ruido.</b> Hay tres fuentes: (1) el contacto, al inicio y en todo el espectro; (2) un segundo contacto o rebote cerca de 105 ms,
+  visible como un pequeño salto en la envolvente; (3) un <b>zumbido de 50 Hz</b> de la red eléctrica, a −46 dBFS, constante.
+  Desde unos 200 ms, la envolvente total deja de bajar porque lo que se mide ya es ese zumbido, no el vaso. Esto es de la grabación,
+  no del vaso: los modelos no lo imitan.</li>
+</ul>
+<p class="ref">Videos del curso: Módulo 1, <i>Timbre y estructura armónica</i> (parciales armónicos e inarmónicos) y
+<i>Representación gráfica: tiempo vs frecuencia</i>; Módulo 2, <i>Envolventes</i>; Módulo 4, <i>Síntesis espectral: DFT y FFT</i> y
+<i>Síntesis espectral: ventanas y proceso</i> (la relación entre el largo de la ventana y la resolución en tiempo y en frecuencia).</p>
+
+<!-- ======================= PARTE 2 ======================= -->
+<h2 id="p2">Parte 2 · Un sonido, dos métodos</h2>
+<p>Los dos modelos leen la misma tabla de modos (<a href="modelos/modos.js"><code>modelos/modos.js</code></a>), que escribe el script de
+análisis. La grabación no se usa como audio en ninguno. Los dos corren en tiempo real con la Web Audio API, en
+<a href="modelos/index.html">modelos/index.html</a>. La diferencia está en <b>cómo</b> llega cada uno a esos modos.</p>
+
+<h3>A · Síntesis aditiva</h3>
+<p>Construye el espectro componente a componente: un oscilador sinusoidal por modo, cada uno con su envolvente
+(subida lineal y caída exponencial con su propio T60). Lo que se escucha es exactamente la tabla; no hay nada más.</p>
+<img src="img/flujo-aditiva.svg" alt="Flujo de señal de la síntesis aditiva">
+<table>
+  <tr><th>Parámetro</th><th>Rango</th><th>Unidad</th><th>Efecto</th></tr>
+  <tr><td>Frecuencia del modo principal</td><td class="n">200–8000</td><td>Hz</td><td>Transpone todos los modos y conserva sus proporciones. Medido: 2725.</td></tr>
+  <tr><td>Decaimiento</td><td class="n">0,1–10</td><td>× T60 medido</td><td>Alarga o acorta todos los modos: más largo suena a campana, más corto a madera.</td></tr>
+  <tr><td>Brillo</td><td class="n">−24 a +12</td><td>dB/octava</td><td>Sube o baja los modos agudos respecto del principal.</td></tr>
+  <tr><td>Estiramiento</td><td class="n">0,5–1,5</td><td>exponente k</td><td>Cada razón r pasa a r<sup>k</sup>: cambia las proporciones entre modos, es decir, el "material" del objeto.</td></tr>
+  <tr><td>Ataque</td><td class="n">0–200</td><td>ms</td><td>Tiempo de subida de cada parcial: 0 es golpe seco, sobre 50 ms suena frotado.</td></tr>
+</table>
+<p class="ref">Videos: Módulo 4, <i>Síntesis aditiva</i>; Módulo 2, <i>Osciladores y tablas de ondas</i> y <i>Envolventes</i>.</p>
+
+<h3>B · Resonadores modales (ruido → banco de filtros)</h3>
+<p>Obtiene el espectro de forma indirecta. Un pulso de ruido muy corto (el "golpe") entra a un banco de filtros pasabanda muy angostos, uno por modo.
+Cada filtro resuena en su frecuencia y su ancho de banda fija cuánto dura: <b>Q = π·f·T60 / ln 1000</b>
+(Q ≈ 370 para el modo principal). Es un modelo físico simplificado, porque cada filtro de dos polos se comporta como un oscilador
+amortiguado (masa-resorte). El sonido aparece cuando algo lo excita, y la forma de la excitación cambia qué modos suenan.
+<b>Usa filtros digitales</b> como parte del método.</p>
+<img src="img/flujo-modal.svg" alt="Flujo de señal del modelo modal">
+<table>
+  <tr><th>Parámetro</th><th>Rango</th><th>Unidad</th><th>Efecto</th></tr>
+  <tr><td>Frecuencia del modo principal</td><td class="n">200–8000</td><td>Hz</td><td>Transpone el centro de todos los filtros.</td></tr>
+  <tr><td>Decaimiento</td><td class="n">0,1–10</td><td>× T60 medido</td><td>Escala el Q de cada filtro: Q alto da una resonancia larga y angosta.</td></tr>
+  <tr><td>Dureza del golpe</td><td class="n">0–1</td><td>—</td><td>Largo del pulso (6 ms → 0,15 ms) y corte de su pasabajos (1 → 18 kHz). Un golpe duro excita los modos agudos.</td></tr>
+  <tr><td>Brillo</td><td class="n">−24 a +12</td><td>dB/octava</td><td>Ganancia de cada resonador según su frecuencia.</td></tr>
+  <tr><td>Golpe directo</td><td class="n">0–1</td><td>—</td><td>Cuánto del pulso se oye sin pasar por los filtros: el "clic" del contacto.</td></tr>
+</table>
+<p class="ref">Videos: Módulo 3, <i>Filtros selectivos en frecuencia</i>; Módulo 4, <i>Modelamiento físico</i>; Módulo 4, <i>Síntesis espectral</i>
+(la idea de moldear un espectro rico).</p>
+
+<h3 id="comp">La comparación</h3>
+<p>Los tres a la misma <b>sonoridad</b>, no al mismo pico: −22,9 LUFS (ITU-R BS.1770, ponderación K, medido sobre 0,85 s desde el ataque).
+El nivel se bajó lo justo para que ninguno pase de −1 dBFS. La grabación necesita +13,6 dB, la aditiva +2,0 dB y la modal −3,9 dB.</p>
+<div class="tres">
+  <div><b>Original</b><audio controls src="audio/comparacion/original.wav"></audio></div>
+  <div><b>A · Aditiva</b><audio controls src="audio/comparacion/aditiva.wav"></audio></div>
+  <div><b>B · Modal</b><audio controls src="audio/comparacion/modal.wav"></audio></div>
+</div>
+<p class="dim">Los tres seguidos: <audio controls src="audio/comparacion/original-aditiva-modal.wav"></audio>
+WAV: <a href="audio/comparacion/original.wav" download>original</a> · <a href="audio/comparacion/aditiva.wav" download>aditiva</a> ·
+<a href="audio/comparacion/modal.wav" download>modal</a> · <a href="audio/comparacion/original-aditiva-modal.wav" download>los tres seguidos</a></p>
+<img src="img/comparacion-espectrogramas.png" alt="Espectrogramas de original, aditiva y modal con los mismos ajustes">
+<img src="img/comparacion-espectros-envolventes.png" alt="Espectro del ataque y envolvente de los tres">
+
+<h3>Qué logra y qué no cada método, y por qué</h3>
+<div class="pendiente">Borrador hecho con IA a partir de las figuras. Alvaro lo revisa contra lo que escucha y lo corrige donde no esté de acuerdo.</div>
+<p><b>Lo que ambos logran.</b> La altura, el brillo y el oscurecimiento durante la extinción. Están en la tabla de modos (frecuencias, niveles y un T60 por modo),
+y ambos métodos la respetan. Las envolventes de los tres casi coinciden durante los primeros 200 ms. Después, la del original se queda plana
+por el zumbido, y la de los modelos sigue bajando: ese tramo ya no es el vaso.</p>
+<p><b>Aditiva: lo que no logra.</b> Suena demasiado limpia. Le falta el <b>ruido del contacto</b>, porque un oscilador sinusoidal solo puede producir
+energía en su frecuencia, y el clic es energía repartida en todo el espectro durante 5 ms. Para tenerlo habría que agregar un componente
+estocástico: ruido con su propia envolvente y filtrado, como en los modelos "senos + ruido". También le faltan los modos débiles sobre 11 kHz
+que no entraron en la tabla (se ven en el espectro del ataque en 11,7, 13,4 y 14,6 kHz); cada modo es un oscilador más y hay que decidir dónde cortar.
+Y cada golpe es independiente: si se golpea de nuevo mientras suena, los osciladores nuevos se suman a los viejos sin interactuar.</p>
+<p><b>Modal: lo que logra además.</b> El pulso de ruido pasa en parte directo (el clic) y en parte por los filtros. Alrededor de cada modo hay una
+"falda" de ruido filtrado (curva verde del espectro del ataque) que la aditiva no tiene y que se parece más al original. Las amplitudes relativas de los
+modos ya no dependen solo de la tabla, sino también del espectro del golpe: un pulso blando (largo, con pasabajos) casi no excita los modos agudos. Así
+funciona un objeto real golpeado con algo más blando. Y como los filtros guardan su estado, un segundo golpe se suma a la vibración que ya existe
+con su fase, como en un vaso real.</p>
+<p><b>Modal: lo que no logra.</b> El clic es ruido blanco filtrado y no tiene la forma del contacto real (el rebote de los 105 ms no aparece).
+Cada resonador de dos polos solo puede caer en forma exponencial con un T60 fijo, igual que la aditiva, así que ninguno de los dos imitaría un modo que
+cambie de frecuencia o de amortiguamiento en el tiempo. Y en este método no se controla la amplitud de un modo en forma directa: depende de la ganancia del
+filtro, de su Q y del golpe. Por eso hubo que compensar la ganancia (g = nivel / 2α) para que un modo con Q alto no quedara más débil.</p>
+<p><b>Cuál resultó más adecuado.</b> El <b>modal</b>. Para una fuente que es un objeto que resuena cuando lo golpean, el modelo que separa
+<i>excitación</i> y <i>resonador</i> tiene el mismo principio que la fuente. Eso le da sin esfuerzo el clic, la dependencia de la dureza y la
+interacción entre golpes. La aditiva es más precisa en lo que la tabla describe, pero solo hace eso: para cada rasgo nuevo hay que agregar
+componentes a mano. Eso dice algo de cada método: la aditiva sirve para reproducir un espectro ya conocido, y la modal sirve para un objeto que
+se toca de distintas maneras.</p>
+<p class="ref">Videos: Módulo 4, <i>Síntesis aditiva</i> y <i>Modelamiento físico</i>; Módulo 3, <i>Filtros selectivos en frecuencia</i>.</p>
+
+<!-- ======================= PARTE 3 ======================= -->
+<h2 id="p3">Parte 3 · Más allá del original</h2>
+<audio controls src="audio/parte3-render.wav"></audio>
+<p class="dim"><a href="audio/parte3-render.wav" download>parte3-render.wav</a> · 72 s · producido con los dos modelos
+(botón "Renderizar" de la página de modelos o <code>modelos/render_headless.py</code>; el recorrido está en <a href="modelos/render.js"><code>render.js</code></a>).</p>
+<table>
+  <tr><th>Tiempo</th><th>Sección</th></tr>
+  <tr><td class="n">0:00</td><td>Aditiva: el vaso tal como se midió</td></tr>
+  <tr><td class="n">0:04</td><td>Aditiva: decaimiento ×1 → ×8</td></tr>
+  <tr><td class="n">0:12</td><td>Aditiva: estiramiento 0,6 → 1,4 (decaimiento ×3)</td></tr>
+  <tr><td class="n">0:18</td><td>Aditiva: brillo −18 → +9 dB/oct</td></tr>
+  <tr><td class="n">0:23</td><td>Aditiva: ataque 0 → 150 ms</td></tr>
+  <tr><td class="n">0:28,5</td><td>Aditiva: vaso transpuesto a 330–660 Hz (melodía)</td></tr>
+  <tr><td class="n">0:34</td><td>Modal: el vaso tal como se midió</td></tr>
+  <tr><td class="n">0:38</td><td>Modal: dureza 0 → 1</td></tr>
+  <tr><td class="n">0:44</td><td>Modal: decaimiento ×0,2 → ×10 (Q de los filtros)</td></tr>
+  <tr><td class="n">0:52</td><td>Modal: golpe directo 0 → 1</td></tr>
+  <tr><td class="n">0:57</td><td>Modal: redoble acelerando sobre resonadores largos</td></tr>
+  <tr><td class="n">1:03</td><td>Modal: vaso transpuesto a 220 Hz, golpe blando</td></tr>
+</table>
+
+<h3>Predecir, escuchar, explicar</h3>
+<p>Las predicciones son del estudiante y se hicieron antes de escuchar el render. Para cada cambio eligió entre dos resultados posibles
+(las alternativas las planteó la IA; la elección es suya). La columna "Medido en el render" sale de medir cada golpe del WAV:
+duración hasta caer 40 dB, centroide espectral (primeros 170 ms), picos principales y momento del máximo.</p>
+<table>
+  <tr><th>Cambio</th><th>Predicción</th><th>Medido en el render</th><th>¿Acertó? Explicación</th></tr>
+  <tr><td>A · decaimiento ×1 → ×8 (0:04)</td><td>Suena más a campana.</td>
+    <td>Duración (−40 dB) 0,28 → 0,55 → 1,08 → más de 1,6 s. Mismos picos (2724, 3492, 5689, 7025 Hz). Centroide 3773 → 4292 Hz.</td>
+    <td><b>Sí.</b> Al multiplicar todos los T60, los modos agudos también duran más y el sonido sigue brillante mucho tiempo, como una campana o una copa fina.
+    La nota no cambia porque las frecuencias son las mismas. Sigue siendo vidrio, porque las razones entre modos no cambian.</td></tr>
+  <tr><td>A · estiramiento 0,6 → 1,4 (0:12)</td><td>Cambia el material, no la nota.</td>
+    <td>El modo principal se queda en 2724 Hz. Los demás se mueven: el 2.º va de 3158 a 3849 Hz y el 3.º de 4236 a 7640 Hz. Centroide 3408 → 5089 Hz.</td>
+    <td><b>Sí.</b> r<sup>k</sup> deja fijo r = 1, así que la nota percibida (el modo principal) no se mueve. Con k = 0,6 los modos se juntan
+    (1 : 1,16 : 1,55) y el timbre se vuelve más compacto y oscuro. Con k = 1,4 se separan (1 : 1,41 : 2,80) y suena más metálico y brillante.
+    Las razones entre parciales son las que definen el "material" (Módulo 1, <i>Timbre y estructura armónica</i>).</td></tr>
+  <tr><td>A · brillo −18 → +9 dB/oct (0:18)</td><td>Más brillante.</td>
+    <td>Centroide 3012 → 5298 Hz. De −18 a −4,5 dB/oct casi no cambia (3012 → 3195 Hz). El último golpe es 6 dB más fuerte.</td>
+    <td><b>Sí, con un matiz.</b> Con valores negativos el cambio se oye poco, porque los agudos ya eran débiles y duran poco. Con +9 dB/oct el modo de
+    5690 Hz queda unos 2 dB sobre el principal y la nota se vuelve ambigua: el brillo puede cambiar qué modo se oye como "la nota".</td></tr>
+  <tr><td>A · ataque 0 → 150 ms (0:23)</td><td>Sigue sonando a golpe.</td>
+    <td>El máximo llega a los 0, 45, 100 y 150 ms. Los picos y la duración no cambian.</td>
+    <td><b>En parte.</b> Con 45 ms todavía se reconoce un golpe suave. Con 100–150 ms el sonido "crece" antes de apagarse, y eso se oye como algo frotado (una copa
+    frotada) o como un sonido al revés. El oído reconoce un golpe por un ataque de pocos milisegundos (Módulo 2, <i>Envolventes</i>). Cuando la subida dura
+    tanto como un tercio de la caída, deja de oírse como impulso.</td></tr>
+  <tr><td>B · dureza 0 → 1 (0:38)</td><td>Cambia más el brillo que el volumen.</td>
+    <td>Centroide 2949 → ~4300 Hz, y el nivel pico sube 17 dB (−34 → −18 dB).</td>
+    <td><b>No del todo: cambian los dos, y el volumen cambia mucho.</b> Un golpe blando es un pulso largo con pasabajos en ~1 kHz, que pone casi toda su
+    energía bajo 2 kHz. Este vaso no tiene ningún modo ahí (el primero está en 2725 Hz), así que los filtros reciben muy poca energía: el sonido sale más
+    oscuro y además mucho más débil. En un objeto con modos graves, la dureza cambiaría sobre todo el brillo.</td></tr>
+  <tr><td>B · decaimiento ×0,2 → ×10, Q de los filtros (0:44)</td><td>Dura más.</td>
+    <td>Duración 0,06 → 0,20 → 0,72 → más de 1,8 s. Mismos picos.</td>
+    <td><b>Sí.</b> El ancho de banda de un pasabanda y su tiempo de resonancia son inversos (Q = π·f·T60 / ln 1000). Con ×0,2 el filtro es ancho y se oye un "toc"
+    corto, casi sin nota. Con ×10 es angostísimo y suena como una campana larga. La altura no cambia porque el centro de los filtros no se mueve
+    (Módulo 3, <i>Filtros selectivos en frecuencia</i>).</td></tr>
+  <tr><td>B · golpe directo 0 → 1 (0:52)</td><td>El vaso suena más brillante.</td>
+    <td>Centroide sin tendencia (4558, 3944, 3592, 3901, 3701 Hz). Duración igual (~0,27 s). Solo cambia el primer milisegundo.</td>
+    <td><b>No.</b> El pulso directo dura menos de 1 ms. Se oye como un "clic" de contacto separado, delante de la resonancia, y no como un vaso más brillante.
+    La resonancia, que es lo que se oye como "el vaso", no cambia porque los filtros reciben lo mismo. El brillo del vaso depende de cuánto suenan
+    sus modos agudos, y esta perilla no los toca.</td></tr>
+</table>
+<p class="dim">Pendiente: que el estudiante escuche el render y confirme o corrija la columna de lo medido con lo que oye.</p>
+
+<h3>Parámetros determinantes</h3>
+<ul>
+  <li><b>Aditiva, el que más cambia: decaimiento.</b> Lleva el sonido de vaso seco (0,3 s) a campana (más de 1,6 s), porque el T60 de cada
+  modo es lo que el oído usa para decidir si el objeto es "duro y resonante" o "amortiguado". El <b>estiramiento</b> le sigue, porque cambia el material.</li>
+  <li><b>Aditiva, el que casi no cambia: brillo hacia valores negativos</b> (y el ataque bajo ~5 ms). Bajar modos que ya eran débiles y cortos casi no
+  cambia el resultado: el centroide solo baja de 3195 a 3012 Hz entre −4,5 y −18 dB/oct.</li>
+  <li><b>Modal, el que más cambia: decaimiento (Q).</b> Pasa de un "toc" sin nota a una campana. Le sigue la <b>dureza</b>, que en este vaso cambia mucho
+  el volumen porque decide cuánta energía del golpe cae donde hay modos.</li>
+  <li><b>Modal, el que casi no cambia: golpe directo.</b> Agrega un clic de menos de 1 ms y no modifica la resonancia, que es la mayor parte del sonido.</li>
+</ul>
+
+<!-- ======================= PARTE 4 ======================= -->
+<h2 id="p4">Parte 4 · El modelo tocado por la fuente</h2>
+<p>El modelo modal se toca con el mismo vaso, que suena frente al micrófono (con audífonos). La cadena de escucha calcula dos descriptores:</p>
+<ul>
+  <li><b>Envolvente de amplitud</b> (seguidor de un polo: ataque 2 ms, liberación 80 ms) y, a partir de ella, los <b>ataques</b>. Hay un ataque
+  cuando la envolvente supera −45 dBFS y duplica (+6 dB) a una envolvente lenta de 300 ms. Luego se espera 5 ms para medir su pico y se ignoran
+  nuevos ataques por 60 ms.</li>
+  <li><b>Centroide espectral</b> (FFT de 2048 en el momento del ataque), llevado en escala logarítmica a la dureza del golpe:
+  1500 Hz → 0, 7000 Hz → 1. Un golpe al vaso con algo duro, o en el borde, produce un modelo más brillante.</li>
+</ul>
+<p>Hay dos modos. En <b>Disparo</b>, cada golpe al vaso golpea el modelo con velocidad = pico de la envolvente y dureza = centroide. En
+<b>Continuo</b>, el ruido multiplicado por la envolvente, muestra a muestra, entra directamente a los filtros; así el modelo puede sonar frotado o
+raspado, y sigue el gesto en vez de reaccionar solo a los ataques.</p>
+<img src="img/flujo-escucha.svg" alt="Cadena de escucha">
+<div class="pendiente">PENDIENTE (Alvaro): grabar la toma de 1–2 min con el botón "Grabar toma" (WAV estéreo: izquierda = micrófono,
+derecha = modelo), y escribir la reflexión: cómo cambia el sonido del modelo cuando lo controla el vaso en vivo, en lugar de una envolvente fija, y por qué.</div>
+<p class="ref">Videos: Módulo 2, <i>Envolventes</i>; Módulo 4, <i>Síntesis espectral: DFT y FFT</i> (centroide); videos introductorios de Pure Data
+y Max y Módulo 5, <i>Construcción de un sintetizador</i> (control de un sintetizador por una señal externa).</p>
+
+<!-- ======================= DOCUMENTACIÓN ======================= -->
+<h2 id="doc">Código y cómo reproducir</h2>
+<table>
+  <tr><th>Archivo</th><th>Qué es</th></tr>
+  <tr><td><a href="modelos/index.html">modelos/index.html</a></td><td>Página que corre los dos modelos y la cadena de escucha en tiempo real.</td></tr>
+  <tr><td><a href="modelos/synth.js">modelos/synth.js</a></td><td>Modelo aditivo (<code>golpeAditiva</code>), modelo modal (<code>class Modal</code>), parámetros, render y WAV.</td></tr>
+  <tr><td><a href="modelos/escucha.js">modelos/escucha.js</a></td><td>Parte 4: seguidor de envolvente, detector de ataques y grabador (AudioWorklet), centroide.</td></tr>
+  <tr><td><a href="modelos/render.js">modelos/render.js</a></td><td>Recorrido del render de la Parte 3 (secciones y golpes, editables).</td></tr>
+  <tr><td><a href="modelos/modos.js">modelos/modos.js</a></td><td>Tabla de modos medida, escrita por el análisis.</td></tr>
+  <tr><td><a href="modelos/render_headless.py">modelos/render_headless.py</a></td><td>Produce <code>audio/golpe-*.wav</code> y el render sin abrir el navegador.</td></tr>
+  <tr><td><a href="analisis/analisis.py">analisis/analisis.py</a></td><td>Figuras de la Parte 1, tabla de modos y comparación con sonoridad igualada.</td></tr>
+</table>
+<p><b>Entorno probado:</b> Microsoft Edge 156.0.4314.58 en Windows 10 (Chrome usa el mismo motor); Python 3.13 con NumPy, SciPy, Matplotlib y Playwright. La página funciona abierta
+desde el portafolio (https) o como archivo local (doble clic); el micrófono no funciona en direcciones http que no sean localhost.</p>
+<p><b>Para reproducir los audios entregados</b>, desde la carpeta <code>T2-metodos-de-sintesis</code>:</p>
+<pre class="card" style="font:13px var(--mono);white-space:pre-wrap">pip install numpy scipy matplotlib playwright
+python analisis/analisis.py               # figuras de la fuente y modelos/modos.js
+python modelos/render_headless.py         # audio/golpe-aditiva.wav, golpe-modal.wav, parte3-render.wav
+python analisis/analisis.py --comparar    # audio/comparacion/*.wav y figuras de comparación</pre>
+<p class="dim">Lo mismo se puede hacer a mano: en <code>modelos/index.html</code>, "Valores medidos" y "Descargar WAV de un golpe" en cada modelo, y "Renderizar" en la Parte 3.</p>
+
+<!-- ======================= IA ======================= -->
+<h2 id="ia">Declaración de uso de IA</h2>
+<div class="pendiente">Borrador. Alvaro lo revisa y agrega cualquier otra herramienta o prompt que haya usado.</div>
+<table>
+  <tr><th>Herramienta</th><th>Propósito</th></tr>
+  <tr><td>Claude (Anthropic), en la app de escritorio de Claude, con acceso a la carpeta del proyecto</td>
+      <td>Leer el enunciado y proponer un plan; extraer el golpe de la grabación; escribir el script de análisis y medir los modos; implementar los dos
+      modelos, la cadena de escucha y el render en Web Audio; igualar sonoridad; hacer los diagramas; redactar las explicaciones de la Parte 1
+      (apartado 1.4), la comparación y esta página.</td></tr>
+</table>
+<p><b>Prompts relevantes:</b></p>
+<ul>
+  <li>«te deje el pdf dentro de Orquestra de laptops/T2 puedes leerlo y hacerlo»</li>
+  <li>«Cualquier decision preguntame cosas de gusto o preferencia»</li>
+  <li>«acabo de grabar con OBS un sonido de repetidos golpes a un vaso de vidrio, podrias usarlo, usa esos metodos»
+      (después de que la IA propusiera aditiva + resonadores modales para un golpe a vidrio)</li>
+</ul>
+<p><b>Escrito sin IA</b>, como exige el enunciado: la descripción auditiva de la Parte 1 y las predicciones de la Parte 3. Para las predicciones,
+la IA planteó dos resultados posibles por cada cambio y el estudiante eligió uno antes de escuchar. Las explicaciones de la tabla las redactó la IA a
+partir de mediciones del render.
+La grabación y la toma en vivo las hizo el estudiante. Todo lo demás fue revisado por el estudiante, que responde por ello.</p>
+</main>
+</body>
+</html>
