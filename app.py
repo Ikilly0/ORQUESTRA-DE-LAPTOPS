@@ -956,7 +956,8 @@ class KeyboardDialog(tk.Toplevel):
 # Tocar instrumento: choose what to play
 # ==========================================================================
 class PlayChooser(tk.Toplevel):
-    """Tocar instrumento: pick the instrument, Manual (you play) or Automático (practice), and the tempo."""
+    """Tocar instrumento: pick the instrument, Manual (you play), Automático (practice) or Práctica con banda,
+    and the tempo. The theme's drums (tambores / platillos) play by patterns in every mode."""
 
     def __init__(self, menu):
         super().__init__(menu)
@@ -1010,10 +1011,6 @@ class PlayChooser(tk.Toplevel):
         self.band_radio = ttk.Radiobutton(sp, text="Práctica con banda: suena el resto de la banda y tú tocas tu "
                                           "instrumento", value="band", variable=self.mode_var, command=self._update)
         self.band_radio.grid(row=3, column=0, columnspan=3, sticky="w")
-        self.pattern_radio = ttk.Radiobutton(sp, text="Percusión por patrones: toda la batería en trozos "
-                                             "estándar; tú eliges qué patrón suena (solo batería)",
-                                             value="patterns", variable=self.mode_var, command=self._update)
-        self.pattern_radio.grid(row=4, column=0, columnspan=3, sticky="w")
         ttk.Label(sp, text="Pista:", style="Muted.TLabel").grid(row=5, column=0, sticky="e", pady=(10, 0))
         self.track_var = tk.StringVar()
         self.track_box = ttk.Combobox(sp, textvariable=self.track_var, state="readonly", width=42,
@@ -1065,7 +1062,8 @@ class PlayChooser(tk.Toplevel):
         s = self.menu.settings
         names = [p["name"] for p in self.menu.profiles]
         self.profile_box.current(names.index(s["play_profile"]) if s.get("play_profile") in names else 0)
-        self.mode_var.set(s.get("play_mode", "manual") if self.tracks else "manual")
+        mode = s.get("play_mode", "manual")
+        self.mode_var.set(mode if self.tracks and mode in ("manual", "auto", "band") else "manual")
         self._last_profile = None
         self._update()
 
@@ -1083,21 +1081,23 @@ class PlayChooser(tk.Toplevel):
             w.state(["!disabled"] if has_song else ["disabled"])
         self.auto_radio.state(["!disabled"] if self.tracks else ["disabled"])
         self.band_radio.state(["!disabled"] if self.tracks else ["disabled"])
-        drum_theme = bool(self.tracks) and any(t["drums"] for t in self.tracks)
-        can_patterns = drum_theme and p is not None and is_drums(p["sound"])
-        self.pattern_radio.state(["!disabled"] if can_patterns else ["disabled"])
-        if self.mode_var.get() == "patterns" and not can_patterns:
-            self.mode_var.set("manual")
-        patterns = self.mode_var.get() == "patterns"
+        patterns = self._uses_patterns(p)
+        self.track_box.state(["disabled"] if patterns or not has_song else ["!disabled"])
         auto = self.mode_var.get() == "auto"
         band = self.mode_var.get() == "band"
         track = self._selected_track()
         ok = p is not None and len(p["slots"]) > 0
         msg = ""
         if patterns:
-            self.hint.config(text="La batería del tema, descompuesta en patrones de 2 compases (ritmos, redobles, "
-                                  "ráfagas, fills). Das Empezar y eliges con 1 a 0 qué patrón suena; la guía "
-                                  "muestra cuál usa el tema. Suena el resto de la banda.")
+            self.hint.config(text={
+                "manual": "La batería se toca por patrones de 2 compases (ritmos, redobles, ráfagas, fills) "
+                          "sacados del tema. Das Empezar y eliges con 1 a 0 qué patrón suena: entra en el "
+                          "compás siguiente. La guía muestra cuál usa el tema.",
+                "auto": "La app toca los patrones del tema sola, cada uno en su compás, al tempo que pongas. "
+                        "Puedes dar golpes sueltos encima.",
+                "band": "Suena el resto de la banda y tú eliges los patrones con 1 a 0; cada cambio entra en el "
+                        "compás siguiente. La guía muestra cuál usa el tema.",
+            }[self.mode_var.get()])
             self.go.state(["!disabled"] if ok else ["disabled"])
             self.status.config(text="")
             return
@@ -1120,6 +1120,11 @@ class PlayChooser(tk.Toplevel):
         self.go.state(["!disabled"] if ok else ["disabled"])
         self.status.config(text=msg)
 
+    def _uses_patterns(self, p):
+        """Theme drums always play by patterns (in every mode): the song needs a drum track."""
+        return (p is not None and is_drums(p["sound"]) and self.song is not None
+                and any(t["drums"] for t in self.tracks))
+
     def _play(self):
         p = self._profile()
         if p is None:
@@ -1133,8 +1138,8 @@ class PlayChooser(tk.Toplevel):
         except ValueError:
             bpm = self.song.bpm if self.song else 120
         self.withdraw()
-        if self.mode_var.get() == "patterns":
-            PatternWindow(self, self.engine, p, bpm=bpm)
+        if self._uses_patterns(p):
+            PatternWindow(self, self.engine, p, bpm=bpm, mode=self.mode_var.get())
             return
         PlayWindow(self, self.engine, p, song=self.song, track=self._selected_track() if self.song else None,
                    auto=auto, bpm=bpm, band=self.mode_var.get() == "band")
@@ -2528,8 +2533,9 @@ class ListenWindow(tk.Toplevel):
 # Percusión por patrones
 # ==========================================================================
 PATTERN_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
-LIVE_PIECES = [("a", "kick"), ("s", "snare"), ("d", "hat"), ("f", "hat_open"), ("g", "crash"),
-               ("h", "ride"), ("j", "tom_hi"), ("k", "tom_mid"), ("l", "tom_floor")]
+PIECE_NAMES_ES = {"kick": "bombo", "kick2": "bombo 2", "snare": "caja", "hat": "hi-hat",
+                  "hat_open": "hi-hat abierto", "crash": "crash", "ride": "ride", "ride_bell": "campana del ride",
+                  "tom_hi": "tom agudo", "tom_mid": "tom medio", "tom_floor": "tom de piso"}
 GRID_ROWS = [("Platillos", ("crash", "ride", "ride_bell")), ("Hi-hat", ("hat", "hat_open")), ("Caja", ("snare",)),
              ("Toms", ("tom_hi", "tom_mid", "tom_floor")), ("Bombo", ("kick", "kick2"))]
 PATTERN_COLORS = ["#5a5d66", "#3f8fd2", "#d2a03f", "#c0566a", "#e0763a", "#8a6fd0", "#4fb0a0",
@@ -2537,13 +2543,18 @@ PATTERN_COLORS = ["#5a5d66", "#3f8fd2", "#d2a03f", "#c0566a", "#e0763a", "#8a6fd
 
 
 class PatternWindow(tk.Toplevel):
-    """The whole drum kit as a few standard 2-bar patterns taken from the song. You start the clock and
-    choose which pattern plays (keys 1..0); the change comes in on the next bar. The guide below shows
-    which pattern the song uses in each moment; when you pick that one, you hear the song's exact bar."""
+    """The theme's drums, played by patterns: the drum part (tambores or platillos, or the whole kit) as a
+    few standard 2-bar patterns taken from the song. Every mode plays this way:
+      manual - you choose which pattern plays (keys 1..0); the change comes in on the next bar;
+      band   - the same, with the rest of the band sounding;
+      auto   - the app plays the song's own patterns, bar by bar; you can hit on top.
+    The guide below shows which pattern the song uses in each moment; when you pick that one, you hear the
+    song's exact bar. What plays is decided by drum_patterns.PatternSequencer (bars, not seconds)."""
 
     AHEAD = 4.0  # seconds of guide visible above the line
+    TITLES = {"manual": "Manual", "band": "Práctica con banda", "auto": "Automático (práctica)"}
 
-    def __init__(self, chooser, engine, profile, bpm=None):
+    def __init__(self, chooser, engine, profile, bpm=None, mode="manual"):
         super().__init__(chooser)
         self.chooser = chooser
         self.menu = chooser.menu
@@ -2551,18 +2562,24 @@ class PatternWindow(tk.Toplevel):
         self.profile = profile
         self.song = chooser.song
         self.kit = instrument_by_id("drums")
-        self.info = drum_patterns.analyse(self.menu.theme_path)
+        self.part = profile.get("part") if profile.get("part") in DRUM_GROUPS else None
+        path = self.menu.theme_path
+        self.info = drum_patterns.analyse(path, self.part)
         self.patterns = self.info["patterns"]
         self.guide = self.info["guide"]
         self.shift = self.info["shift"]
         self.spb = self.info["slots_per_bar"]
-        tr = self.info["track"]
-        self.real = drum_patterns._bars(self.song, track_events(self.menu.theme_path, tr), self.shift,
-                                        self.song.meter)  # the song's exact bars, for a correct choice
+        events = track_events(path, self.info["track"])
+        real = drum_patterns._bars(self.song, events, self.shift, self.song.meter, self.part)
+        self.seq = drum_patterns.PatternSequencer(self.info, real, self.part, mode)
+        # the rest of the kit (the other drummer's part) sounds with the band, as in the song
+        self.other_drums = (drum_patterns._bars(self.song, events, self.shift, self.song.meter)
+                            if self.part else {})
+        # live hits: the instrument's own keys (those not used to choose a pattern)
+        self.live = {s["key"]: s["piece"] for s in profile["slots"]
+                     if s.get("piece") and s["key"] not in PATTERN_KEYS}
         self.vis_delay = engine.output_delay()
         self.running = False
-        self.current = 0      # pattern playing
-        self.queued = None    # pattern chosen, comes in on the next bar
         self.next_bar = None  # next bar to hand to the engine
         self.sec0 = 0.0
         self.countin = 0.0
@@ -2571,14 +2588,12 @@ class PatternWindow(tk.Toplevel):
         self.band_gain = [0.5]
         self.held = {}
         self.pending_release = {}
-        self.hits_ok = 0
-        self.bars_done = 0
         self.band_notes = self._load_band()
         self.band_starts = [n[0] for n in self.band_notes]
         self.band_ptr = 0
         threading.Thread(target=DrumKit.warm, daemon=True).start()
         self.configure(bg=BG)
-        self.title(f"Percusión por patrones - {self.menu.theme_name}")
+        self.title(f"{self.profile['name']} por patrones - {self.menu.theme_name}")
         self.protocol("WM_DELETE_WINDOW", self.back)
         self._build(bpm)
         self.bind("<KeyPress>", self._on_press)
@@ -2613,8 +2628,9 @@ class PatternWindow(tk.Toplevel):
         root.pack(fill="both", expand=True)
         top = ttk.Frame(root)
         top.pack(fill="x")
-        ttk.Label(top, text="Percusión por patrones", style="Title.TLabel").pack(side="left")
-        ttk.Label(top, text=f"   {self.menu.theme_name}", style="BgMuted.TLabel").pack(side="left")
+        ttk.Label(top, text=self.profile["name"], style="Title.TLabel").pack(side="left")
+        ttk.Label(top, text=f"   {self.TITLES[self.seq.mode]} por patrones  ·  {self.menu.theme_name}",
+                  style="BgMuted.TLabel").pack(side="left")
         ttk.Button(top, text="← Volver", command=self.back, takefocus=False).pack(side="right")
 
         ctl = ttk.Frame(root)
@@ -2636,7 +2652,7 @@ class PatternWindow(tk.Toplevel):
             ttk.Button(ctl, text=f"{pct}%", width=5, takefocus=False,
                        command=lambda pct=pct: self.bpm_var.set(str(round(base * pct / 100)))).pack(side="left",
                                                                                                 padx=2)
-        self.band_var = tk.BooleanVar(value=True)
+        self.band_var = tk.BooleanVar(value=self.seq.mode == "band")
         ttk.Checkbutton(ctl, text="Banda", variable=self.band_var, takefocus=False).pack(side="left", padx=(16, 4))
         self.band_vol = tk.IntVar(value=60)
         ttk.Scale(ctl, from_=0, to=100, orient="horizontal", length=120, variable=self.band_vol,
@@ -2651,10 +2667,11 @@ class PatternWindow(tk.Toplevel):
 
         self.status = ttk.Label(root, text="", font=("TkDefaultFont", 13, "bold"))
         self.status.pack(anchor="w", pady=(6, 0))
-        ttk.Label(root, text="Elige el patrón con 1 a 0: entra en el compás siguiente. Abajo, la guía muestra "
-                             "qué patrón usa el tema; si eliges ese, suena el compás exacto del tema.   "
-                             "Golpes en vivo: A bombo · S caja · D hi-hat · F hi-hat abierto · G crash · "
-                             "H ride · J K L toms (mantén = redoble).",
+        live = " · ".join(f"{key_label(k)} {PIECE_NAMES_ES.get(pc, pc)}" for k, pc in self.live.items())
+        how = ("La app toca los patrones del tema, cada uno en su compás." if self.seq.mode == "auto" else
+               "Elige el patrón con 1 a 0: entra en el compás siguiente. Abajo, la guía muestra qué patrón usa "
+               "el tema; si eliges ese, suena el compás exacto del tema.")
+        ttk.Label(root, text=how + (f"   Golpes en vivo: {live} (mantén = redoble)." if live else ""),
                   style="BgMuted.TLabel", wraplength=1500, justify="left").pack(anchor="w", pady=(2, 8))
 
         cards = ttk.Frame(root)
@@ -2686,7 +2703,9 @@ class PatternWindow(tk.Toplevel):
         n = self.spb * drum_patterns.UNIT_BARS
         x0, x1, y0, rh = 16, w - 10, 32, 15
         hits = set(p.hits)
-        for r, (label, pieces) in enumerate(GRID_ROWS):
+        rows = [(lab, pcs) for lab, pcs in GRID_ROWS if not self.part or drum_group(pcs[0]) == self.part]
+        rh = min(rh, 75 / len(rows))
+        for r, (label, pieces) in enumerate(rows):
             y = y0 + r * rh
             c.create_text(x0, y + rh / 2, text=label, anchor="w", fill=MUTED, font=("TkDefaultFont", 7))
             gx0 = x0 + 52
@@ -2710,12 +2729,8 @@ class PatternWindow(tk.Toplevel):
 
     # ---- choosing ----
     def _choose(self, i):
-        if not 0 <= i < len(self.patterns):
-            return
-        if self.running:
-            self.queued = i
-        else:
-            self.current, self.queued = i, None
+        if self.seq.mode != "auto":  # in Automático the song chooses
+            self.seq.choose(i, now=not self.running)
         self.focus_set()
 
     def _on_press(self, event):
@@ -2730,7 +2745,7 @@ class PatternWindow(tk.Toplevel):
         elif k in PATTERN_KEYS:
             self._choose(PATTERN_KEYS.index(k))
         else:
-            piece = dict(LIVE_PIECES).get(k)
+            piece = self.live.get(k)
             if piece:
                 tag = ("live", k)
                 self.held[k] = tag
@@ -2795,9 +2810,7 @@ class PatternWindow(tk.Toplevel):
         self.engine.start_clock(clicks, audible=True)
         self.next_bar = bar
         self.band_ptr = bisect_left(self.band_starts, self.sec0 - 1e-6)
-        if self.queued is not None:
-            self.current, self.queued = self.queued, None
-        self.hits_ok = self.bars_done = 0
+        self.seq.start(bar)
         self.running = True
         self.start_button.config(text="■ Detener  (Enter)")
 
@@ -2816,22 +2829,16 @@ class PatternWindow(tk.Toplevel):
         last = self.info["last"]
         while self.next_bar is not None and self.next_bar <= last and self._bar_sec(self.next_bar) < horizon:
             bar = self.next_bar
-            if self.queued is not None:  # the change comes in on this bar
-                self.current, self.queued = self.queued, None
-            pat = self.patterns[self.current]
-            unit = drum_patterns.unit_of(self.info, bar)
-            half = bar - unit
-            song_pid = self.guide.get(unit)
-            if song_pid == self.current:  # the right pattern: the song's own bar
-                hits = sorted(self.real.get(bar, ()))
-                self.hits_ok += 1
-            else:
-                hits = [(s - half * self.spb, pc) for s, pc in pat.hits if half * self.spb <= s < (half + 1) * self.spb]
-            self.bars_done += 1
-            for slot, piece in hits:
+            for slot, piece in self.seq.bar_hits(bar):
                 pos = self._to_sample(self._bar_sec(bar, slot))
                 tag = ("pat", bar, slot, piece)
                 events += [(pos, "on", tag, GainVoice(self.kit.voice(piece=piece), self.gain, 0))]
+            if self.band_var.get():  # the other drum part, as the song plays it
+                for slot, piece in self.other_drums.get(bar, ()):
+                    if drum_group(piece) != self.part:
+                        tag = ("band-drums", bar, slot, piece)
+                        events += [(self._to_sample(self._bar_sec(bar, slot)), "on", tag,
+                                    GainVoice(self.kit.voice(piece=piece), self.band_gain, 0))]
             self.next_bar += 1
         if self.band_var.get():
             while self.band_ptr < len(self.band_notes) and self.band_notes[self.band_ptr][0] < horizon:
@@ -2867,21 +2874,22 @@ class PatternWindow(tk.Toplevel):
             dict(self.sections).get(self.section_var.get(), 0.0) + 1e-6)))
         beat = self.song.seconds_to_beat(ref) - self.shift
         bar = max(1, self.song.bar_of(beat + 1e-6))
-        unit = drum_patterns.unit_of(self.info, bar)
-        song_pid = self.guide.get(unit)
-        cur = self.patterns[self.current].name
-        txt = f"Compás {bar}    ·    Suena: {PATTERN_KEYS[self.current]} {cur}"
-        if self.queued is not None:
-            txt += f"    ·    Entra: {PATTERN_KEYS[self.queued]} {self.patterns[self.queued].name}"
+        song_pid = self.seq.song_pattern(bar)
+        current, queued = self.seq.current, self.seq.queued
+        txt = f"Compás {bar}"
+        if current is not None:
+            txt += f"    ·    Suena: {PATTERN_KEYS[current]} {self.patterns[current].name}"
+        if queued is not None:
+            txt += f"    ·    Entra: {PATTERN_KEYS[queued]} {self.patterns[queued].name}"
         if song_pid is not None:
             txt += f"    ·    El tema usa: {PATTERN_KEYS[song_pid]} {self.patterns[song_pid].name}"
-        if self.running and self.bars_done:
-            txt += f"    ·    Acertados {round(100 * self.hits_ok / self.bars_done)}%"
+        if self.running and self.seq.bars_done and self.seq.mode != "auto":
+            txt += f"    ·    Acertados {round(100 * self.seq.hits_ok / self.seq.bars_done)}%"
         if getattr(self, "_status_txt", None) != txt:
             self.status.config(text=txt)
             self._status_txt = txt
         for i, c in enumerate(self.cards):  # green = playing, yellow = coming in, white = the song's choice
-            col = ("#3fb66b" if i == self.current else "#f0c040" if i == self.queued
+            col = ("#3fb66b" if i == current else "#f0c040" if i == queued
                    else "#e8e8ea" if i == song_pid else PANEL)
             if self._card_state.get(i) != col:
                 c.config(highlightbackground=col)

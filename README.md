@@ -62,13 +62,25 @@ La ventana se abre maximizada; **F11** alterna pantalla completa (en Mac tambié
      una columna por instrumento con *Suena* y un fader de volumen (se guarda por tema), BPM, *Desde* y barra
      para saltar.
 
-### Percusión por patrones
-En **Tocar instrumento**, con un instrumento de batería, el modo **Percusión por patrones** convierte la batería
-del tema en **10 patrones estándar de 2 compases** sacados del MIDI (`drum_patterns.py`): silencio, ritmos con
-ride, fills de toms, redobles de caja, hi-hat rápido, ráfaga de platillos, ráfaga de doble bombo, etc.
-Le das **Empezar** y eliges con **1…0** qué patrón suena; el cambio entra en el compás siguiente. La guía de
-abajo muestra qué patrón usa el tema en cada momento; si eliges ese, suena el compás exacto del tema (y sube
-"Acertados"). Las letras A…L dan golpes sueltos encima (mantener = redoble). La banda suena de fondo.
+### Batería por patrones
+En los temas con batería, **los tambores y los platillos se tocan siempre por patrones**, en los tres modos
+(Manual, Práctica con banda y Automático). `drum_patterns.py` descompone la parte de cada uno en hasta
+**10 patrones de 2 compases** sacados del MIDI: silencio, ritmos con ride, fills de toms, redobles de caja,
+hi-hat rápido, ráfaga de platillos, ráfaga de doble bombo, etc.
+
+- **Manual:** das **Empezar** y eliges con **1…0** qué patrón suena; el cambio entra en el compás siguiente.
+  La guía de abajo muestra qué patrón usa el tema; si eliges ese, suena el compás exacto del tema (y sube
+  "Acertados").
+- **Práctica con banda:** lo mismo, con el resto de la banda sonando (también la otra mitad de la batería).
+- **Automático:** la app toca los patrones del tema sola, cada uno en su compás.
+
+En todos, las teclas del instrumento (A, S, D…) dan golpes sueltos encima (mantener = redoble).
+
+Los patrones no tienen tiempos fijos: cada golpe está guardado como posición dentro del compás (1/8 de tiempo),
+así que siguen cualquier tempo y los cambios siempre caen en una línea de compás. Qué patrón suena en cada
+compás lo decide `PatternSequencer` (en `drum_patterns.py`), que cuenta en compases del tema y cambia solo con
+comandos simples, por ejemplo `{"type": "choose", "part": "tambores", "pattern": 3}`. Eso deja listo
+coordinarlo por red con las otras laptops: basta mandar y recibir esos comandos (`listeners`).
 
 ### Batería
 La pista de batería se divide en dos instrumentos: **tambores** (bombo, bombo 2, caja, toms) y

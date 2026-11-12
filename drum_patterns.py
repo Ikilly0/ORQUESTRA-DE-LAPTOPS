@@ -186,3 +186,87 @@ def analyse(path, part=None):
 def unit_of(info, bar):
     """First bar of the 2-bar trozo that contains `bar`."""
     return info["first"] + ((bar - info["first"]) // info["unit"]) * info["unit"]
+
+
+class PatternSequencer:
+    """Which pattern each bar of the drums plays: the musical state, with no window, clock or audio.
+
+    Everything is counted in bars of the song (never seconds), so the same patterns follow any tempo and
+    a change always lands on a bar line. The state only changes through commands, plain dicts that can be
+    saved or sent over the network to the other laptops later:
+        {"type": "choose", "part": "tambores", "pattern": 3}   # comes in on the next bar of `quantize`
+        {"type": "mode", "part": "tambores", "mode": "auto"}
+    `listeners` are called with every command applied (a future network link subscribes there).
+
+    mode "manual" / "band": you choose; "auto": the bars follow the song's own patterns.
+    When the pattern you play is the one the song uses there, the bar is the song's exact bar."""
+
+    MODES = ("manual", "band", "auto")
+
+    def __init__(self, info, real_bars, part=None, mode="manual", quantize=1):
+        self.info = info
+        self.real = real_bars
+        self.part = part
+        self.mode = mode if mode in self.MODES else "manual"
+        self.quantize = max(1, int(quantize))  # bars between possible changes
+        self.current = None
+        self.queued = None
+        self.listeners = []
+        self.hits_ok = 0
+        self.bars_done = 0
+
+    @property
+    def patterns(self):
+        return self.info["patterns"]
+
+    def song_pattern(self, bar):
+        return self.info["guide"].get(unit_of(self.info, bar))
+
+    def command(self, cmd):
+        """Applies a command (from the keys here or, later, from the network)."""
+        if cmd.get("part", self.part) != self.part:
+            return False
+        if cmd.get("type") == "choose" and 0 <= cmd.get("pattern", -1) < len(self.patterns):
+            if cmd.get("now") or self.current is None:
+                self.current, self.queued = cmd["pattern"], None
+            else:
+                self.queued = cmd["pattern"]
+        elif cmd.get("type") == "mode" and cmd.get("mode") in self.MODES:
+            self.mode = cmd["mode"]
+        else:
+            return False
+        for fn in self.listeners:
+            fn(cmd)
+        return True
+
+    def choose(self, i, now=False):
+        return self.command({"type": "choose", "part": self.part, "pattern": i, "now": now})
+
+    def start(self, bar):
+        """Starting at `bar`: nothing chosen yet -> the pattern the song uses there."""
+        self.hits_ok = self.bars_done = 0
+        if self.queued is not None:
+            self.current, self.queued = self.queued, None
+        if self.current is None or self.mode == "auto":
+            self.current = self.song_pattern(bar) or 0
+
+    def is_boundary(self, bar):
+        return (bar - self.info["first"]) % self.quantize == 0
+
+    def bar_hits(self, bar):
+        """[(slot, piece)] that `bar` plays (slots of 1/SLOTS_PER_BEAT beat from its first beat)."""
+        song_pid = self.song_pattern(bar)
+        if self.mode == "auto" and song_pid is not None:
+            self.current, self.queued = song_pid, None
+        elif self.queued is not None and self.is_boundary(bar):
+            self.current, self.queued = self.queued, None
+        if self.current is None:
+            self.current = song_pid or 0
+        self.bars_done += 1
+        if song_pid == self.current:  # the right pattern: the song's own bar
+            self.hits_ok += 1
+            return sorted(self.real.get(bar, ()))
+        spb = self.info["slots_per_bar"]
+        half = bar - unit_of(self.info, bar)  # which bar of the pattern's trozo
+        return [(s - half * spb, pc) for s, pc in self.patterns[self.current].hits
+                if half * spb <= s < (half + 1) * spb]
