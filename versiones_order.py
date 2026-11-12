@@ -11,8 +11,8 @@ Escribe en songs/:
 Que se considera adorno:
   - Guitarra ritmica: los compases donde deja los power chords (raiz + quinta) y hace una linea de
     una nota que sube y baja por la escala (o mueve el acorde una quinta arriba). En la version
-    simplificada ese compas se reemplaza por las 2 notas principales en el patron de siempre:
-    una nota larga y 4 corcheas rapidas.
+    simplificada ese compas mantiene exactamente su ritmo (donde cae cada nota, con sus
+    contratiempos), pero cada golpe toca las 2 notas principales en vez de la linea.
   - Bajo: los compases de arpegio de relleno (raiz-quinta-octava) y las escalas de paso; se dejan
     en la raiz con el mismo ritmo.
   - Todas las voces: notas de adorno rapidas (glissandos, apoyaturas, tremolo), es decir notas de
@@ -131,15 +131,19 @@ def simplify(name, notes, bar):
         b101 = [n for n in keep if n[0] == 101 * bar + 192]
         if len(b101) == 1:
             keep.append([b101[0][0], b101[0][1], 41, b101[0][3], b101[0][4]])
-        vel = fills[0][3] if fills else 104
-        ch = fills[0][4] if fills else 4
-        for b, pair in RG_FILL_BARS.items():
-            if not any(n[0] // bar == b for n in fills):
-                continue
-            # patron de la guitarra: una nota larga + 4 corcheas rapidas
-            for off, dur in ((0, 92), (96, 20), (144, 20), (192, 20), (240, 20)):
-                for p in pair:
-                    keep.append([b * bar + off, dur, p, vel, ch])
+        # mismo ritmo del original (donde cae cada nota y cuanto dura, con sus contratiempos),
+        # pero cada golpe con las 2 notas principales del compas
+        onsets = defaultdict(list)
+        for n in fills:
+            onsets[n[0]].append(n)
+        starts = sorted(onsets)
+        for k, s in enumerate(starts):
+            g = onsets[s]
+            dur = max(n[1] for n in g)
+            if k + 1 < len(starts) and starts[k + 1] // bar == s // bar:
+                dur = min(dur, starts[k + 1] - s - 4)
+            for p in RG_FILL_BARS[s // bar]:
+                keep.append([s, dur, p, g[0][3], g[0][4]])
     elif name == BASS:
         out = []
         for n in keep:
