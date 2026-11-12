@@ -1230,6 +1230,9 @@ class PlayChooser(tk.Toplevel):
                            band=p is leader, session=session,
                            label="Práctica con banda" if mode == "band" else None)
         session.show(0)
+        # opening maximizes each window a moment later (and some systems raise it then): bring the first
+        # one back to the front once they have all settled
+        self.after(500, lambda: session.windows and session.show(session.current))
 
     def back_from_play(self):
         self.deiconify()
@@ -1466,7 +1469,7 @@ class PlayWindow(tk.Toplevel):
         self.bind("<FocusOut>", self._on_focus_out)
         bind_tab(self, session)
         self.protocol("WM_DELETE_WINDOW", self.back)
-        self.after(50, self.focus_force)
+        self.after(50, lambda: self._active() and self.focus_force())
 
     # ---- layout -----------------------------------------------------------
     def _refocus(self, *_):
@@ -2855,7 +2858,8 @@ class PatternWindow(tk.Toplevel):
         self.bind("<KeyRelease>", self._on_release)
         bind_tab(self, session)
         maximize(self)
-        self.focus_force()
+        if session is None:
+            self.focus_force()
         self._tick_id = None
         self._tick()
 
