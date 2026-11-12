@@ -76,6 +76,13 @@ hi-hat rápido, ráfaga de platillos, ráfaga de doble bombo, etc.
 
 En todos, las teclas del instrumento (A, S, D…) dan golpes sueltos encima (mantener = redoble).
 
+**De dónde salen:** tambores y platillos salen siempre del MIDI del tema, nada se inventa. El flujo es:
+1. Pones el MIDI en `songs/`.
+2. Generas sus patrones: `python drum_patterns.py "songs/Tema.mid"`. Escribe `songs/Tema.patrones.json`
+   (tambores, platillos y batería completa) y muestra la lista de patrones.
+3. La app carga ese archivo al abrir el tema. Si falta, o si el MIDI cambió después de generarlo, los calcula
+   del MIDI en el momento. Todas las laptops con el mismo archivo tocan exactamente los mismos patrones.
+
 Los patrones no tienen tiempos fijos: cada golpe está guardado como posición dentro del compás (1/8 de tiempo),
 así que siguen cualquier tempo y los cambios siempre caen en una línea de compás. Qué patrón suena en cada
 compás lo decide `PatternSequencer` (en `drum_patterns.py`), que cuenta en compases del tema y cambia solo con

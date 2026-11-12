@@ -9,7 +9,17 @@ ráfaga de doble bombo, redoble de caja, fill de toms, silencio...) y se marcan 
 
 Para tocar: el baterista enciende el reloj (Empezar) y elige qué patrón suena; el cambio entra en el
 siguiente compás. La guía muestra qué patrón usa el tema en cada compás.
+
+Flujo de trabajo: los patrones salen siempre del MIDI del tema. Se generan una vez con
+    python drum_patterns.py "songs/Tema.mid"
+que escribe "songs/Tema.patrones.json" (tambores, platillos y batería completa) junto al MIDI. La app carga
+ese archivo; si no existe, o si el MIDI cambió después de generarlo, los calcula del MIDI al abrir el tema.
+Todas las laptops que tengan el mismo archivo tocan exactamente los mismos patrones.
 """
+import hashlib
+import json
+import os
+import sys
 from collections import Counter, defaultdict
 
 from instruments import drum_group
@@ -112,12 +122,73 @@ def _name(hits):
     return "Ritmo"
 
 
-def analyse(path, part=None):
+PARTS = ("tambores", "platillos", None)  # None = the whole kit
+
+
+def patterns_file(path):
+    """The patterns file of a MIDI theme: next to it, same name, .patrones.json."""
+    return os.path.splitext(path)[0] + ".patrones.json"
+
+
+def _midi_hash(path):
+    with open(path, "rb") as f:
+        return hashlib.sha1(f.read()).hexdigest()
+
+
+def _to_json(info):
+    return {"patterns": [{"id": p.id, "name": p.name, "kind": p.kind, "units": p.units,
+                          "hits": [[s, pc] for s, pc in p.hits]} for p in info["patterns"]],
+            "guide": {str(u): pid for u, pid in info["guide"].items()},
+            **{k: info[k] for k in ("shift", "track", "meter", "first", "last", "unit", "slots_per_bar")}}
+
+
+def _from_json(d):
+    out = {k: d[k] for k in ("shift", "track", "meter", "first", "last", "unit", "slots_per_bar")}
+    out["patterns"] = [Pattern(p["id"], [tuple(h) for h in p["hits"]], p["units"], p["kind"], p["name"])
+                       for p in d["patterns"]]
+    out["guide"] = {int(u): pid for u, pid in d["guide"].items()}
+    return out
+
+
+def load_patterns(path, part=None):
+    """The patterns of `part` from the theme's patterns file, or None (no file, or made from another MIDI)."""
+    try:
+        with open(patterns_file(path), encoding="utf-8") as f:
+            data = json.load(f)
+        if data.get("midi_sha1") != _midi_hash(path):
+            return None
+        return _from_json(data["parts"][part or "kit"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def save_patterns(path):
+    """Makes the patterns of every part from the MIDI and writes them to the theme's patterns file."""
+    parts = {}
+    for part in PARTS:
+        info = analyse(path, part, use_file=False)
+        if info is None:
+            return None
+        parts[part or "kit"] = _to_json(info)
+    data = {"midi": os.path.basename(path), "midi_sha1": _midi_hash(path), "parts": parts}
+    out = patterns_file(path)
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=1)
+    return out
+
+
+def analyse(path, part=None, use_file=True):
     """-> dict(patterns, guide={first bar of each 2-bar trozo: pattern id}, shift, track, meter, first, last).
-    part = "tambores" / "platillos" / None: only those pieces of the kit."""
-    key = (path, part)
+    part = "tambores" / "platillos" / None: only those pieces of the kit.
+    Read from the theme's patterns file when there is one for this MIDI; else made from the MIDI."""
+    key = (path, part, use_file)
     if key in _CACHE:
         return _CACHE[key]
+    if use_file:
+        info = load_patterns(path, part)
+        if info is not None:
+            _CACHE[key] = info
+            return info
     song = load_song(path)
     tr = drum_track(path)
     if tr is None:
@@ -270,3 +341,16 @@ class PatternSequencer:
         half = bar - unit_of(self.info, bar)  # which bar of the pattern's trozo
         return [(s - half * spb, pc) for s, pc in self.patterns[self.current].hits
                 if half * spb <= s < (half + 1) * spb]
+
+
+if __name__ == "__main__":
+    # python drum_patterns.py "songs/Tema.mid" [...]: writes the patterns file of each theme
+    for mid in sys.argv[1:]:
+        out = save_patterns(mid)
+        if out is None:
+            print(f"{mid}: no tiene pista de batería")
+            continue
+        print(f"{mid} -> {out}")
+        for part in PARTS:
+            info = load_patterns(mid, part)
+            print(f"  {part or 'batería completa'}: " + ", ".join(f"{p.id + 1} {p.name}" for p in info["patterns"]))
