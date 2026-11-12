@@ -57,6 +57,12 @@ La ventana se abre maximizada; **F11** alterna pantalla completa (en Mac tambié
      - *Automático (práctica):* la app toca la pista sola, al tempo que elijas; puedes tocar encima.
      - Mientras tocas: **+ / −** a la izquierda o derecha agregan o quitan notas (graves desde M, N, B…;
        agudas en las teclas libres). Espacio = palm mute, Enter = power chords, flechas ↑/↓ = octava.
+     - **Varios instrumentos a la vez:** en la lista haces clic en uno o varios (por ejemplo guitarra rítmica +
+       piano + tambores). Se abre una ventana por instrumento, todas con el mismo reloj: *Empezar* en
+       cualquiera arranca todas en el mismo compás, y *Detener* las para. **Tab** (o la fila de nombres arriba)
+       pasa al instrumento siguiente con su interfaz y sus teclas; **Shift + Tab** vuelve al anterior. En
+       *Práctica con banda* suena todo lo que no elegiste; en *Automático* la app toca todos los elegidos.
+       Saltar de compás (*Desde* o ←/→) mientras suena reinicia todos desde ahí, con cuenta.
    - **Configurar instrumentos:** nombre, sonido, cantidad de teclas, notas, y *Configurar teclado*.
    - **♫ Escuchar tema completo:** la app toca todos los instrumentos del tema a la vez, como mesa de mezcla:
      una columna por instrumento con *Suena* y un fader de volumen (se guarda por tema), BPM, *Desde* y barra

@@ -129,11 +129,14 @@ THEME_NAMES = [("order", "Order - Ultrakill"), ("freesia", "Freesia - Guilty Gea
 
 
 def theme_label(path):
-    low = os.path.basename(path).lower()
+    stem = os.path.splitext(os.path.basename(path))[0]
+    low = stem.lower()
     for key, name in THEME_NAMES:
         if key in low:
-            return name
-    return os.path.splitext(os.path.basename(path))[0]
+            # versions of a theme ("ORDER v2 simplificada ...") keep their words after the name
+            extra = stem[len(key):].strip(" -_") if low.startswith(key) else ""
+            return f"{name} ({extra})" if extra else name
+    return stem
 
 
 def find_themes():
@@ -989,14 +992,26 @@ class PlayChooser(tk.Toplevel):
 
         box = ttk.Frame(root, style="Panel.TFrame", padding=12)
         box.pack(fill="x", pady=(12, 0))
-        ttk.Label(box, text="Instrumento", style="H2.TLabel").grid(row=0, column=0, sticky="w")
-        self.profile_var = tk.StringVar()
-        self.profile_box = ttk.Combobox(box, textvariable=self.profile_var, state="readonly", width=30,
-                                        values=[p["name"] for p in self.menu.profiles])
-        self.profile_box.grid(row=1, column=0, sticky="w", pady=(6, 0))
-        self.profile_box.bind("<<ComboboxSelected>>", lambda _e: self._update())
-        self.profile_info = ttk.Label(box, text="", style="Muted.TLabel")
-        self.profile_info.grid(row=1, column=1, sticky="w", padx=12, pady=(6, 0))
+        ttk.Label(box, text="Instrumentos", style="H2.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(box, text="Haz clic para elegir uno o varios. Con varios, Tab cambia de instrumento "
+                            "mientras tocas.", style="Muted.TLabel").grid(row=0, column=1, sticky="w", padx=12)
+        lf = ttk.Frame(box, style="Panel.TFrame")
+        lf.grid(row=1, column=0, sticky="nw", pady=(6, 0))
+        names = [p["name"] for p in self.menu.profiles]
+        self.profile_box = tk.Listbox(lf, selectmode="multiple", exportselection=False, activestyle="none",
+                                      height=min(10, max(4, len(names))), width=32, bg=PANEL, fg=FG,
+                                      selectbackground="#3f8fd2", selectforeground=FG, highlightthickness=0,
+                                      borderwidth=0, font=("TkDefaultFont", 11))
+        for n in names:
+            self.profile_box.insert("end", n)
+        self.profile_box.pack(side="left")
+        if len(names) > 10:
+            sb = ttk.Scrollbar(lf, orient="vertical", command=self.profile_box.yview)
+            sb.pack(side="left", fill="y")
+            self.profile_box.config(yscrollcommand=sb.set)
+        self.profile_box.bind("<<ListboxSelect>>", lambda _e: self._update())
+        self.profile_info = ttk.Label(box, text="", style="Muted.TLabel", wraplength=360, justify="left")
+        self.profile_info.grid(row=1, column=1, sticky="nw", padx=12, pady=(6, 0))
 
         sp = ttk.Frame(root, style="Panel.TFrame", padding=12)
         sp.pack(fill="x", pady=(12, 0))
@@ -1042,9 +1057,13 @@ class PlayChooser(tk.Toplevel):
         self.go = ttk.Button(bottom, text="Tocar  →", style="Go.TButton", command=self._play)
         self.go.pack(side="right")
 
+    def _profiles(self):
+        """The chosen instruments, in list order."""
+        return [self.menu.profiles[i] for i in self.profile_box.curselection() if i < len(self.menu.profiles)]
+
     def _profile(self):
-        i = self.profile_box.current()
-        return self.menu.profiles[i] if 0 <= i < len(self.menu.profiles) else None
+        ps = self._profiles()
+        return ps[0] if ps else None
 
     def _profile_track(self, p):
         """Index of the MIDI track this instrument comes from (theme instruments), or None."""
@@ -1061,14 +1080,26 @@ class PlayChooser(tk.Toplevel):
     def _restore(self):
         s = self.menu.settings
         names = [p["name"] for p in self.menu.profiles]
-        self.profile_box.current(names.index(s["play_profile"]) if s.get("play_profile") in names else 0)
+        chosen = [n for n in s.get("play_profiles") or [s.get("play_profile")] if n in names]
+        for n in chosen or names[:1]:
+            self.profile_box.selection_set(names.index(n))
+        if chosen:
+            self.profile_box.see(names.index(chosen[0]))
         mode = s.get("play_mode", "manual")
         self.mode_var.set(mode if self.tracks and mode in ("manual", "auto", "band") else "manual")
         self._last_profile = None
         self._update()
 
     def _update(self):
+        ps = self._profiles()
+        if len(ps) > 1:
+            return self._update_multi(ps)
         p = self._profile()
+        if p is None:
+            self.profile_info.config(text="Elige al menos un instrumento.")
+            self.go.state(["disabled"])
+            self.hint.config(text="")
+            return
         if p:
             self.profile_info.config(text=f"{SOUND_NAMES.get(p['sound'], p['sound'])}, {len(p['slots'])} teclas")
         if p is not self._last_profile:  # new instrument: follow its own track
@@ -1120,6 +1151,37 @@ class PlayChooser(tk.Toplevel):
         self.go.state(["!disabled"] if ok else ["disabled"])
         self.status.config(text=msg)
 
+    def _update_multi(self, ps):
+        """Several instruments: each one follows its own track; Tab switches between them while playing."""
+        has_song = self.song is not None
+        lines = []
+        for p in ps:
+            how = ("por patrones" if self._uses_patterns(p) else
+                   "sigue su pista" if has_song and self._profile_track(p) is not None else "libre")
+            lines.append(f"{p['name']}: {SOUND_NAMES.get(p['sound'], p['sound'])}, {how}")
+        self.profile_info.config(text="\n".join(lines))
+        self._last_profile = None
+        self.track_box.state(["disabled"])
+        self.track_var.set("(la de cada instrumento)")
+        for w in [self.tempo_spin] + self.pct_buttons:
+            w.state(["!disabled"] if has_song else ["disabled"])
+        self.auto_radio.state(["!disabled"] if self.tracks else ["disabled"])
+        self.band_radio.state(["!disabled"] if self.tracks else ["disabled"])
+        mode = self.mode_var.get()
+        follows = [p for p in ps if self._uses_patterns(p) or (has_song and self._profile_track(p) is not None)]
+        ok, msg = all(len(p["slots"]) > 0 for p in ps), ""
+        if mode in ("auto", "band") and not follows:
+            ok, msg = False, "Ninguno de estos instrumentos tiene pista en el tema."
+        what = {"manual": "Tocas tú cada instrumento.",
+                "auto": "La app toca todos los instrumentos elegidos; puedes tocar encima del que tengas en "
+                        "pantalla.",
+                "band": "Suena el resto de la banda (todo lo que no elegiste) y tú tocas los elegidos."}[mode]
+        self.hint.config(text=f"{what} Se abre una ventana por instrumento, todas con el mismo reloj: Empezar "
+                              f"en cualquiera arranca todas. Tab (o Shift+Tab) cambia al instrumento siguiente "
+                              f"(o anterior) y sus teclas.")
+        self.go.state(["!disabled"] if ok else ["disabled"])
+        self.status.config(text=msg)
+
     def _uses_patterns(self, p):
         """Theme drums always play by patterns (in every mode): the song needs a drum track."""
         return (p is not None and is_drums(p["sound"]) and self.song is not None
@@ -1130,19 +1192,44 @@ class PlayChooser(tk.Toplevel):
         if p is None:
             return
         auto = self.mode_var.get() == "auto"
+        ps = self._profiles()
         s = self.menu.settings
-        s.update({"play_profile": p["name"], "play_mode": self.mode_var.get()})
+        s.update({"play_profile": p["name"], "play_profiles": [x["name"] for x in ps],
+                  "play_mode": self.mode_var.get()})
         save_settings(s)
         try:
             bpm = max(20.0, min(400.0, float(self.tempo_var.get())))
         except ValueError:
             bpm = self.song.bpm if self.song else 120
         self.withdraw()
+        if len(ps) > 1:
+            return self._play_several(ps, bpm)
         if self._uses_patterns(p):
             PatternWindow(self, self.engine, p, bpm=bpm, mode=self.mode_var.get())
             return
         PlayWindow(self, self.engine, p, song=self.song, track=self._selected_track() if self.song else None,
                    auto=auto, bpm=bpm, band=self.mode_var.get() == "band")
+
+    def _play_several(self, ps, bpm):
+        """One window per instrument on one shared clock; Tab brings the next one to the front.
+        Only one of them (the first that follows the theme) plays the rest of the band, without any of
+        the chosen instruments."""
+        mode = self.mode_var.get()
+        session = PlaySession(self, ps, mode)
+        leader = None
+        if mode == "band":
+            leader = next((p for p in ps if self._uses_patterns(p) or
+                           (self.song is not None and self._profile_track(p) is not None)), None)
+        for p in ps:
+            if self._uses_patterns(p):
+                PatternWindow(self, self.engine, p, bpm=bpm, mode=mode, session=session,
+                              plays_band=p is leader)
+            else:
+                track = self._profile_track(p) if self.song is not None else None
+                PlayWindow(self, self.engine, p, song=self.song, track=track, auto=mode == "auto", bpm=bpm,
+                           band=p is leader, session=session,
+                           label="Práctica con banda" if mode == "band" else None)
+        session.show(0)
 
     def back_from_play(self):
         self.deiconify()
@@ -1154,12 +1241,128 @@ class PlayChooser(tk.Toplevel):
 
 
 # ==========================================================================
+# Several instruments at once: one window each, one clock, Tab switches
+# ==========================================================================
+def bind_tab(window, session):
+    """Tab / Shift+Tab: next / previous instrument (several instruments); never moves focus between widgets."""
+    def go(delta):
+        return session.step(delta) if session else "break"
+    window.bind("<Tab>", lambda _e: go(1))
+    for seq in ("<Shift-Tab>", "<ISO_Left_Tab>"):
+        try:
+            window.bind(seq, lambda _e: go(-1))
+        except tk.TclError:  # ISO_Left_Tab only exists on X11
+            pass
+
+
+class PlaySession:
+    """Ties the windows of several chosen instruments together.
+    - All share the engine's song clock: Empezar in any of them starts all of them at the same song time
+      (the others `follow` it); stopping or the end of the song stops the clock and with it every window.
+    - Only the window in front gets the keys; Tab / Shift+Tab brings the next / previous one to the front.
+    - Only the window in front draws its animation and decides the click (the others keep scheduling sound)."""
+
+    def __init__(self, chooser, profiles, mode):
+        self.chooser = chooser
+        self.profiles = list(profiles)
+        self.mode = mode
+        self.windows = []
+        self.current = 0
+        self.closing = False
+        self._strips = []  # [(window, [labels])]
+
+    def add(self, window):
+        self.windows.append(window)
+
+    def is_active(self, window):
+        return bool(self.windows) and self.windows[self.current] is window
+
+    def build_strip(self, window, parent):
+        """The row of chosen instruments at the top of each window, the one in front highlighted."""
+        row = tk.Frame(parent, bg=BG)
+        row.pack(fill="x", pady=(8, 0))
+        tk.Label(row, text="Tab ⇄", bg=BG, fg=MUTED, font=("TkDefaultFont", 10, "bold")).pack(side="left",
+                                                                                                padx=(0, 8))
+        labels = []
+        for i, p in enumerate(self.profiles):
+            lab = tk.Label(row, text=p["name"], bg=PANEL, fg=MUTED, padx=10, pady=3,
+                           font=("TkDefaultFont", 10, "bold"), cursor="hand2")
+            lab.pack(side="left", padx=2)
+            lab.bind("<Button-1>", lambda _e, i=i: self.show(i))
+            labels.append(lab)
+        self._strips.append((window, labels))
+        self._paint_strips()
+
+    def _paint_strips(self):
+        for _w, labels in self._strips:
+            for i, lab in enumerate(labels):
+                on = i == self.current
+                color = instrument_by_id(self.profiles[i]["sound"]).color if on else PANEL
+                try:
+                    lab.config(bg=color, fg=FG if on else MUTED)
+                except tk.TclError:
+                    pass
+
+    def show(self, i):
+        if not self.windows:
+            return
+        old = self.windows[self.current]
+        self.current = i % len(self.windows)
+        new = self.windows[self.current]
+        if old is not new:
+            old.release_keys()
+        self._paint_strips()
+        if new.state() in ("withdrawn", "iconic"):
+            new.deiconify()
+        new.lift()
+        new.focus_force()
+        new.after(60, lambda: new.winfo_exists() and new.focus_force())
+
+    def step(self, delta):
+        self.show(self.current + delta)
+        return "break"
+
+    def started(self, origin):
+        """`origin` just started the clock: every other window joins at the same song time."""
+        for w in self.windows:
+            if w is not origin:
+                if hasattr(w, "click_var") and hasattr(origin, "click_var"):
+                    w.click_var.set(origin.click_var.get())  # one click setting for all
+                w.follow(origin.sec0, origin.countin, origin.speed, origin.bpm_text())
+
+    def restart_at(self, origin, beat):
+        """Jumping while running (Desde, ←/→): stop everything and start again from that place."""
+        for w in self.windows:
+            w.stop_transport()
+        origin.start_from_beat(beat)
+
+    def only_patterns(self):
+        return all(isinstance(w, PatternWindow) for w in self.windows)
+
+    def close(self):
+        if self.closing:
+            return
+        self.closing = True
+        for w in self.windows:
+            try:
+                w.teardown()
+            except Exception as exc:
+                print("cerrar:", exc, flush=True)
+        self.windows = []
+        self.chooser.back_from_play()
+
+
+# ==========================================================================
 # The instrument
 # ==========================================================================
 class PlayWindow(tk.Toplevel):
     def __init__(self, chooser, engine, profile, song=None, role_id=None, track=None, auto=False, bpm=None,
-                 band=False):
+                 band=False, session=None, label=None):
         super().__init__(chooser)
+        self.session = session
+        self.exclude = [id(p) for p in session.profiles] if session else [id(profile)]
+        if session:
+            session.add(self)
         self.chooser = chooser
         self.engine = engine
         self.profile = profile
@@ -1197,8 +1400,9 @@ class PlayWindow(tk.Toplevel):
         self.auto_drums = False
         self.auto_name = ""
         if song is not None and role_id is None:
-            self.role = {"name": "Automático (práctica)" if self.auto else
-                         ("Práctica con banda" if self.band else "Manual"), "pattern": [], "step": 1.0,
+            self.role = {"name": label or ("Automático (práctica)" if self.auto else
+                                           ("Práctica con banda" if self.band else "Manual")),
+                         "pattern": [], "step": 1.0,
                          "tip": ("La app toca la pista sola, nota por nota. Puedes tocar encima." if self.auto
                                  else "Presiona la tecla marcada cuando la nota llega a la línea.")}
         if self.track is not None:
@@ -1260,6 +1464,7 @@ class PlayWindow(tk.Toplevel):
         self.bind("<KeyPress>", self._on_press)
         self.bind("<KeyRelease>", self._on_release)
         self.bind("<FocusOut>", self._on_focus_out)
+        bind_tab(self, session)
         self.protocol("WM_DELETE_WINDOW", self.back)
         self.after(50, self.focus_force)
 
@@ -1278,6 +1483,8 @@ class PlayWindow(tk.Toplevel):
         sub = f"   {self.ins.name}" + (f"  ·  {self.role['name']}" if self.role else "")
         ttk.Label(header, text=sub, style="BgMuted.TLabel").pack(side="left")
         ttk.Button(header, text="← Volver", command=self.back, takefocus=False).pack(side="right")
+        if self.session:
+            self.session.build_strip(self, root)
 
         body = ttk.Frame(root)
         body.pack(fill="both", expand=True, pady=12)
@@ -1319,7 +1526,7 @@ class PlayWindow(tk.Toplevel):
         """Every theme instrument except mine (for a drum half: only my half is left out)."""
         song, path = self.song, menu.theme_path
         for p in menu.profiles:
-            if p is profile or p.get("theme") != menu.theme_key or not isinstance(p.get("track"), int):
+            if id(p) in self.exclude or p.get("theme") != menu.theme_key or not isinstance(p.get("track"), int):
                 continue
             tracks = [p["track"]] + p.get("extra_tracks", [])
             if self.track in tracks and (not p.get("part") or not self.part or p.get("part") == self.part):
@@ -1746,6 +1953,8 @@ class PlayWindow(tk.Toplevel):
             self._band_reset(self.sec0)
             self.running = True
             self.start_button.config(text="\u25A0 Detener")
+            if self.session:
+                self.session.started(self)
         self._refocus()
 
     def _stop_run(self):
@@ -1758,6 +1967,10 @@ class PlayWindow(tk.Toplevel):
         self.running = False
         self.start_button.config(text="\u25B6 Empezar")
 
+    def _active(self):
+        """In front (or alone): the one that draws and decides the click."""
+        return self.session is None or self.session.is_active(self)
+
     def _click_changed(self):
         t = self.engine.clock_seconds()
         if t is not None and t >= self.countin:
@@ -1769,6 +1982,8 @@ class PlayWindow(tk.Toplevel):
         t = self.engine.clock_seconds()
         if t is None:
             return
+        if self.session:  # every window must jump together: start all again from there
+            return self.session.restart_at(self, beat)
         self.sec0 = self.song.beat_to_seconds(beat) - (max(t, self.countin) - self.countin) * self.speed
         self.engine.set_clicks(self._clicks_from(beat))
         if self.auto or self.band:
@@ -1974,7 +2189,7 @@ class PlayWindow(tk.Toplevel):
         events = []
         while self.auto_ptr < len(self.auto_events) and self.auto_events[self.auto_ptr][0] < horizon:
             on, off, pitch = self.auto_events[self.auto_ptr]
-            tag = ("auto", self.auto_ptr)
+            tag = ("auto", id(self), self.auto_ptr)
             s_on = int(round((self.countin + (on - self.sec0) / self.speed) * SR))
             s_off = int(round((self.countin + (off - self.sec0) / self.speed) * SR))
             if kit is not None:
@@ -2033,7 +2248,7 @@ class PlayWindow(tk.Toplevel):
             self._set_text(self.bar_label, f"Cuenta:  {beats_left}")
             beat = self.start_beat
         elif pos is not None:
-            if self.engine.metro_audible != self.click_var.get():
+            if self.engine.metro_audible != self.click_var.get() and self._active():
                 self.engine.metro_audible = self.click_var.get()
             beat = self.song.seconds_to_beat(self.sec0 + pos * self.speed)
             if beat >= self.song.total_beats:
@@ -2060,7 +2275,7 @@ class PlayWindow(tk.Toplevel):
             self._set_text(self.next_label, "último acorde")
         w = self.progress.winfo_width()
         self.progress.coords(self.progress_bar, 0, 0, w * frac, 10)
-        if self.highway is not None:
+        if self.highway is not None and self._active():
             if t is not None:
                 now_song = self.sec0 + (t - self.countin) * self.speed
             else:
@@ -2209,7 +2424,41 @@ class PlayWindow(tk.Toplevel):
                 self.after_cancel(self.pending_release.pop(k))
             self._really_release(k)
 
+    # ---- several instruments (PlaySession) ----------------------------------------
+    def release_keys(self):
+        self._release_all()
+
+    def bpm_text(self):
+        return self.song_bpm_var.get() if self.song is not None else ""
+
+    def stop_transport(self):
+        if self.running:
+            self._stop_run()
+
+    def start_from_beat(self, beat):
+        self._set_chord(self.song.event_index_at(beat))
+        self._toggle_run()
+
+    def follow(self, sec0, countin, speed, bpm_text):
+        """Another window started the clock: play along from the same song time."""
+        if self.song is None:
+            return
+        self.song_bpm_var.set(bpm_text)
+        self.speed, self.sec0, self.countin = speed, sec0, countin
+        self.start_beat = self.song.seconds_to_beat(sec0)
+        self._set_chord(self.song.event_index_at(self.start_beat + 1e-6))
+        self._auto_reset(sec0)
+        self._band_reset(sec0)
+        self.running = True
+        self.start_button.config(text="\u25A0 Detener")
+
     def back(self):
+        if self.session:
+            return self.session.close()
+        self.teardown()
+        self.chooser.back_from_play()
+
+    def teardown(self):
         self._release_all()
         if self.auto or self.band:
             self.engine.clear_scheduled()
@@ -2222,7 +2471,6 @@ class PlayWindow(tk.Toplevel):
             self.engine.stop_recording(os.path.join(HERE, "recordings"))
         self.engine.all_off()
         self.destroy()
-        self.chooser.back_from_play()
 
 
 class GainVoice:
@@ -2554,8 +2802,12 @@ class PatternWindow(tk.Toplevel):
     AHEAD = 4.0  # seconds of guide visible above the line
     TITLES = {"manual": "Manual", "band": "Práctica con banda", "auto": "Automático (práctica)"}
 
-    def __init__(self, chooser, engine, profile, bpm=None, mode="manual"):
+    def __init__(self, chooser, engine, profile, bpm=None, mode="manual", session=None, plays_band=True):
         super().__init__(chooser)
+        self.session = session
+        self.plays_band = plays_band  # with several instruments only one window plays the rest of the band
+        if session:
+            session.add(self)
         self.chooser = chooser
         self.menu = chooser.menu
         self.engine = engine
@@ -2575,6 +2827,9 @@ class PatternWindow(tk.Toplevel):
         # the rest of the kit (the other drummer's part) sounds with the band, as in the song
         self.other_drums = (drum_patterns._bars(self.song, events, self.shift, self.song.meter)
                             if self.part else {})
+        if session and any(is_drums(p["sound"]) and p.get("part") != self.part for p in session.profiles
+                           if p is not profile):
+            self.other_drums = {}  # the other drum part was chosen too: it plays in its own window
         # live hits: the instrument's own keys (those not used to choose a pattern)
         self.live = {s["key"]: s["piece"] for s in profile["slots"]
                      if s.get("piece") and s["key"] not in PATTERN_KEYS}
@@ -2598,6 +2853,7 @@ class PatternWindow(tk.Toplevel):
         self._build(bpm)
         self.bind("<KeyPress>", self._on_press)
         self.bind("<KeyRelease>", self._on_release)
+        bind_tab(self, session)
         maximize(self)
         self.focus_force()
         self._tick_id = None
@@ -2614,6 +2870,8 @@ class PatternWindow(tk.Toplevel):
             tracks = [p["track"]] + p.get("extra_tracks", [])
             if drum_tr in tracks:
                 continue  # the drums are me
+            if self.session and any(p is q for q in self.session.profiles):
+                continue  # chosen too: it plays in its own window
             ins = instrument_by_id(p["sound"])
             for tr in tracks:
                 for b0, b1, pitch, _ch in track_events(path, tr):
@@ -2632,6 +2890,8 @@ class PatternWindow(tk.Toplevel):
         ttk.Label(top, text=f"   {self.TITLES[self.seq.mode]} por patrones  ·  {self.menu.theme_name}",
                   style="BgMuted.TLabel").pack(side="left")
         ttk.Button(top, text="← Volver", command=self.back, takefocus=False).pack(side="right")
+        if self.session:
+            self.session.build_strip(self, root)
 
         ctl = ttk.Frame(root)
         ctl.pack(fill="x", pady=(10, 4))
@@ -2652,11 +2912,13 @@ class PatternWindow(tk.Toplevel):
             ttk.Button(ctl, text=f"{pct}%", width=5, takefocus=False,
                        command=lambda pct=pct: self.bpm_var.set(str(round(base * pct / 100)))).pack(side="left",
                                                                                                 padx=2)
-        self.band_var = tk.BooleanVar(value=self.seq.mode == "band")
-        ttk.Checkbutton(ctl, text="Banda", variable=self.band_var, takefocus=False).pack(side="left", padx=(16, 4))
+        self.band_var = tk.BooleanVar(value=self.seq.mode == "band" and self.plays_band)
         self.band_vol = tk.IntVar(value=60)
-        ttk.Scale(ctl, from_=0, to=100, orient="horizontal", length=120, variable=self.band_vol,
-                  command=lambda _v: self._volumes()).pack(side="left")
+        if self.plays_band:
+            ttk.Checkbutton(ctl, text="Banda", variable=self.band_var, takefocus=False).pack(side="left",
+                                                                                         padx=(16, 4))
+            ttk.Scale(ctl, from_=0, to=100, orient="horizontal", length=120, variable=self.band_vol,
+                      command=lambda _v: self._volumes()).pack(side="left")
         ttk.Label(ctl, text="  Batería").pack(side="left", padx=(12, 4))
         self.kit_vol = tk.IntVar(value=80)
         ttk.Scale(ctl, from_=0, to=100, orient="horizontal", length=120, variable=self.kit_vol,
@@ -2813,6 +3075,41 @@ class PatternWindow(tk.Toplevel):
         self.seq.start(bar)
         self.running = True
         self.start_button.config(text="■ Detener  (Enter)")
+        if self.session:
+            self.session.started(self)
+
+    # ---- several instruments (PlaySession) ----
+    def release_keys(self):
+        for k in list(self.held):
+            if k in self.pending_release:
+                self.after_cancel(self.pending_release.pop(k))
+            self._really_release(k)
+
+    def bpm_text(self):
+        return self.bpm_var.get()
+
+    def stop_transport(self):
+        if self.running:
+            self._stop()
+
+    def start_from_beat(self, beat):
+        self._toggle()
+
+    def follow(self, sec0, countin, speed, bpm_text):
+        """Another window started the clock: the patterns join from the first whole bar at/after sec0."""
+        self.bpm_var.set(bpm_text)
+        self.speed, self.sec0, self.countin = speed, sec0, countin
+        bar = max(1, self.song.bar_of(self.song.seconds_to_beat(sec0) - self.shift + 1e-6))
+        if self._bar_sec(bar) < sec0 - 1e-3:
+            bar += 1
+        self.next_bar = bar
+        self.band_ptr = bisect_left(self.band_starts, sec0 - 1e-6)
+        self.seq.start(bar)
+        self.running = True
+        self.start_button.config(text="■ Detener  (Enter)")
+
+    def _active(self):
+        return self.session is None or self.session.is_active(self)
 
     def _stop(self):
         self.running = False
@@ -2853,7 +3150,8 @@ class PatternWindow(tk.Toplevel):
         if events:
             self.engine.schedule(events)
         if self.next_bar is not None and self.next_bar > last and now > self._bar_sec(last) + 2:
-            self._stop()
+            if self.session is None or self.session.only_patterns():
+                self._stop()  # with other instruments the song goes on (they stop at its end)
 
     # ---- drawing ----
     def _tick(self):
@@ -2861,9 +3159,11 @@ class PatternWindow(tk.Toplevel):
             if self.engine.clock_seconds() is None:
                 self._stop()
             else:
-                self.engine.metro_audible = self.click_var.get() or (self._song_now() or 0) < self.sec0
+                if self._active():
+                    self.engine.metro_audible = self.click_var.get() or (self._song_now() or 0) < self.sec0
                 self._schedule()
-        self._draw()
+        if self._active():
+            self._draw()
         if self._tick_id:
             self.after_cancel(self._tick_id)
         self._tick_id = self.after(33, self._tick)
@@ -2940,14 +3240,19 @@ class PatternWindow(tk.Toplevel):
             cv.itemconfig(item, state="hidden")
 
     def back(self):
+        if self.session:
+            return self.session.close()
+        self.teardown()
+        self.chooser.back_from_play()
+
+    def teardown(self):
         if self._tick_id:
             self.after_cancel(self._tick_id)
-        for k in list(self.held):
-            self._really_release(k)
+            self._tick_id = None
+        self.release_keys()
         self._stop()
         self.engine.clear_scheduled()
         self.destroy()
-        self.chooser.back_from_play()
 
 
 def main():
