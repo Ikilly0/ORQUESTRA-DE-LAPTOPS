@@ -68,6 +68,28 @@ La ventana se abre maximizada; **F11** alterna pantalla completa (en Mac tambié
      una columna por instrumento con *Suena* y un fader de volumen (se guarda por tema), BPM, *Desde* y barra
      para saltar.
 
+### Tocar en red (varias laptops en la misma Wi-Fi)
+Cada persona toca en su computador, pero todos parten juntos: mismo compás, misma cuenta y mismo tempo.
+No necesita internet, solo estar en la misma red.
+
+1. Una laptop abre **Tocar en red (Wi-Fi)...** (abajo en el menú) y da **Crear sala**: es el anfitrión.
+2. Las demás abren lo mismo, eligen la sala en la lista (aparece sola) y dan **Unirse**. Si no aparece,
+   escriben la IP del anfitrión (sale arriba a la derecha en su ventana de red) y dan **Conectar**.
+3. Los invitados abren solos el tema que tiene abierto el anfitrión. Cada uno entra a *Tocar instrumento* y elige
+   el suyo (se ve en la lista de la sala quién toca qué).
+4. **Empezar** en cualquiera arranca a todas a la vez, desde el compás y con el tempo de quien lo dio; **Detener**
+   detiene a todas. Saltar de compás también mueve a todas. Con *Solo el anfitrión empieza y detiene*, solo
+   el anfitrión controla.
+
+Cómo se mantienen juntas: el anfitrión fija un momento un segundo en el futuro y cada laptop, que ya midió
+la diferencia entre su reloj y el del anfitrión, parte justo ahí (descontando la latencia de su tarjeta de
+sonido). Los cambios de patrón de la batería se avisan a la sala. Detalles en `network.py` (TCP 47810, avisos
+de sala por UDP 47811).
+
+Si no se encuentran: en Windows, la primera vez acepta el aviso del Firewall (*Permitir acceso*, redes
+privadas). Algunas redes, como las de universidades, no dejan que los computadores se hablen entre sí: usen el
+hotspot de un celular o un router propio.
+
 ### Batería por patrones
 En los temas con batería, **los tambores y los platillos se tocan siempre por patrones**, en los tres modos
 (Manual, Práctica con banda y Automático). `drum_patterns.py` descompone la parte de cada uno en hasta

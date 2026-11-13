@@ -111,6 +111,7 @@ class Engine:
         self.clock_samples = 0
         self.clock_clicks = []  # sorted [(sample, accent)]
         self.pending = []       # scheduled notes on the clock: [(sample, kind, tag, voice)]
+        self.start_skip = 0.0   # seconds the next start_clock begins already advanced (network start)
         self.click_hi = _click(1600)
         self.click_lo = _click(1000)
         # recording (list of mono blocks while recording, else None)
@@ -233,11 +234,14 @@ class Engine:
 
     # ---- song clock (tempo map aware) -------------------------------------------
     def start_clock(self, clicks, audible=True):
-        """Starts a clock at sample 0 with clicks at the given [(sample, accent)] positions."""
+        """Starts a clock at sample 0 with clicks at the given [(sample, accent)] positions.
+        `start_skip` (seconds, used once): the clock starts that far along, e.g. a network start that fired a
+        few ms late, or ahead by the output latency so the sound comes out at the agreed moment."""
+        skip, self.start_skip = int(round(max(0.0, self.start_skip) * SR)), 0.0
         with self.lock:
             self.metro_on = False
-            self.clock_samples = 0
-            self.clock_clicks = sorted(clicks)
+            self.clock_samples = skip
+            self.clock_clicks = sorted(c for c in clicks if c[0] >= skip)
             self.metro_audible = audible
             self.clock_on = True
 

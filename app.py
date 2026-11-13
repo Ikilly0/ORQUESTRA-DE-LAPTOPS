@@ -14,7 +14,9 @@ Run:  python app.py
 import glob
 import json
 import os
+import socket
 import sys
+import time
 
 
 def _fix_tcl_paths():
@@ -46,6 +48,7 @@ from tkinter import ttk  # noqa: E402
 from audio import Engine, SequenceVoice  # noqa: E402
 import threading  # noqa: E402
 import drum_patterns  # noqa: E402
+import network  # noqa: E402
 from instruments import DRUM_GROUPS, DRUM_PIECES, INSTRUMENTS, SR, DrumKit, app_data_dir, drum_group  # noqa: E402
 from profiles import (KEY_POSITIONS, apply_theme_keys, LAYOUTS, MAX_KEYS, theme_key, theme_profiles, default_profiles, free_key, drum_part_profiles, merged_profile, theme_merges,
                       track_pitch_counts, all_notes, note_slots,  # noqa: E402
@@ -266,6 +269,7 @@ class MainMenu(tk.Tk):
         self.theme_name = None
         self.theme_path = None
 
+        self._net_setup()
         self.theme_frame = ttk.Frame(self, padding=30)
         self.menu_frame = ttk.Frame(self, padding=30)
         self._build_theme_screen()
@@ -291,6 +295,7 @@ class MainMenu(tk.Tk):
         ttk.Button(f, text="Continuar  \u2192", style="Go.TButton", command=self.choose_theme).pack(anchor="e")
         self.audio_label_1 = ttk.Label(f, text="", style="BgMuted.TLabel")
         self.audio_label_1.pack(anchor="w", side="bottom")
+        self._net_row(f, side="bottom")
 
         saved = self.settings.get("theme_path")
         names_by_path = {os.path.normcase(os.path.abspath(p)): n for n, p in self.themes}
@@ -329,6 +334,7 @@ class MainMenu(tk.Tk):
         self.settings["theme_path"] = self.theme_path or ""
         save_settings(self.settings)
         self.theme_key = theme_key(self.theme_path) if self.theme_path else None
+        self.net_info()
         if self.theme_key and not any(p.get("theme") == self.theme_key for p in self.all_profiles):
             try:  # first time with this theme: one instrument per MIDI track
                 taken = {p["name"] for p in self.all_profiles if not p.get("theme")}
@@ -460,6 +466,7 @@ class MainMenu(tk.Tk):
         self.listen_button.pack(fill="x", pady=8)
         self.audio_label_2 = ttk.Label(f, text="", style="BgMuted.TLabel")
         self.audio_label_2.pack(anchor="w", pady=(24, 0))
+        self._net_row(f)
 
     def _audio_text(self):
         if self.engine.error:
@@ -517,7 +524,372 @@ class MainMenu(tk.Tk):
 
     def close(self):
         save_settings(self.settings)
+        self.net.leave()
         self.engine.stop()
+        self.destroy()
+
+    # ---- red local: several laptops on the same Wi-Fi, one clock (network.py) ---------------------------
+    def _net_setup(self):
+        self.net = network.Link(self.settings.get("net_name") or socket.gethostname() or "Laptop")
+        self.live_windows = []    # the windows playing now (PlayWindow / PatternWindow)
+        self.net_window = None
+        self.net_log = []
+        self.net_status = tk.StringVar(value="")
+        self._net_host_theme = None
+        self._net_pending = None  # after() id of a start waiting for its moment
+        self.after(30, self._net_poll)
+
+    def _net_row(self, parent, side="top"):
+        row = ttk.Frame(parent)
+        row.pack(fill="x", side=side, pady=(16, 0))
+        ttk.Button(row, text="Tocar en red (Wi-Fi)...", command=self.open_net).pack(side="left")
+        ttk.Label(row, textvariable=self.net_status, style="BgMuted.TLabel").pack(side="left", padx=10)
+
+    def open_net(self):
+        if self.net_window is not None and self.net_window.winfo_exists():
+            self.net_window.deiconify()
+            self.net_window.lift()
+            return
+        self.net_window = NetWindow(self)
+
+    def net_note(self, text):
+        self.net_log = (self.net_log + [time.strftime("%H:%M:%S  ") + text])[-40:]
+        print("red:", text, flush=True)
+
+    def net_info(self):
+        """Tell the others which theme I have open and what I'm playing."""
+        self.net.update_info(theme=self.theme_key or "", theme_name=self.theme_name or "Sin tema",
+                             playing=[w.profile["name"] for w in self.live_windows])
+
+    def net_add(self, window):
+        self.live_windows.append(window)
+        self.net_info()
+
+    def net_remove(self, window):
+        if window in self.live_windows:
+            self.live_windows.remove(window)
+            self.net_info()
+
+    def net_start(self, sec0, countin, speed, bpm_text):
+        """Empezar while connected: ask the host; everyone (me too) starts when its "go" arrives.
+        Returns False when not connected (then the window starts by itself)."""
+        if not self.net.active:
+            return False
+        self.net.request_start(sec0, countin, speed, bpm_text, self.theme_key or "")
+        return True
+
+    def net_stop(self):
+        if self.net.active:
+            self.net.request_stop()
+
+    def net_pattern(self, instrument, cmd, patterns):
+        if self.net.active and cmd.get("type") == "choose":
+            i = cmd.get("pattern", -1)
+            label = patterns[i].name if 0 <= i < len(patterns) else ""
+            self.net.send_pattern({**cmd, "label": label}, instrument)
+
+    def _net_lead(self):
+        """The window that starts the clock here (with several instruments, the others follow it)."""
+        ws = [w for w in self.live_windows if getattr(w, "song", None) is not None and w.winfo_exists()]
+        return next((w for w in ws if w._active()), ws[0] if ws else None)
+
+    def _net_poll(self):
+        try:
+            while True:
+                self._net_message(self.net.inbox.get_nowait())
+        except Exception as exc:  # queue.Empty, or a bad message: keep polling
+            if exc.__class__.__name__ != "Empty":
+                print("red:", repr(exc), flush=True)
+        n = self.net.count()
+        if self.net.role == "host":
+            text = f"Red: eres el anfitrión · {n} laptop{'s' if n != 1 else ''} conectada{'s' if n != 1 else ''}"
+        elif self.net.role == "guest":
+            host = next((m.get("name") for m in self.net.roster if m.get("host")), "?")
+            text = f"Red: en la sala de {host} · {n} laptops" + ("" if self.net.synced() else
+                                                                 " · sincronizando reloj...")
+        else:
+            text = ""
+        if self.net_status.get() != text:
+            self.net_status.set(text)
+        self.after(30, self._net_poll)
+
+    def _net_message(self, msg):
+        kind = msg.get("type")
+        if kind == "go":
+            self._net_go(msg)
+        elif kind == "halt":
+            if self._net_pending:
+                self.after_cancel(self._net_pending)
+                self._net_pending = None
+            if any(w.running for w in self.live_windows):
+                self.net_note(f"{msg.get('by')} detuvo la canción.")
+            for w in list(self.live_windows):
+                w.stop_transport()
+        elif kind == "roster":
+            self._net_follow_theme(msg.get("members", []))
+        elif kind == "pattern":
+            if msg.get("id") != self.net.id:
+                c = msg.get("cmd", {})
+                self.net_note(f"{msg.get('name')} ({msg.get('instrument')}): patrón {c.get('pattern', 0) + 1} "
+                              f"{c.get('label', '')}")
+        elif kind in ("note", "lost"):
+            self.net_note(msg.get("text", ""))
+
+    def _net_go(self, msg):
+        by = msg.get("by", "?")
+        if (msg.get("theme") or "") != (self.theme_key or ""):
+            self.net_note(f"{by} dio Empezar en otro tema; aquí no suena.")
+            return
+        lead = self._net_lead()
+        if lead is None:
+            self.net_note(f"{by} dio Empezar. Abre Tocar instrumento para sumarte la próxima vez.")
+            return
+        for w in list(self.live_windows):
+            w.stop_transport()
+        if self._net_pending:
+            self.after_cancel(self._net_pending)
+        # the agreed moment, in my clock; the audio leaves the speaker `output_delay` after the app makes it
+        start = self.net.to_local(msg["at"]) - self.engine.output_delay()
+
+        def fire():
+            self._net_pending = None
+            lead = self._net_lead()
+            if lead is None:
+                return
+            while network.now() < start - 0.0005:  # Tk timers are coarse (~15 ms on Windows): wait the rest
+                pass
+            self.engine.start_skip = max(0.0, network.now() - start)
+            lead.net_begin(msg["sec0"], msg["countin"], msg["speed"], msg["bpm"])
+
+        wait = start - network.now()
+        self._net_pending = self.after(max(0, int(wait * 1000) - 25), fire)
+        self.net_note(f"{by} dio Empezar: parten todos juntos.")
+
+    def _net_follow_theme(self, members):
+        """Invitados: open the host's theme (when it changes), if this laptop has it."""
+        if self.net.role != "guest":
+            return
+        host = next((m for m in members if m.get("host")), None)
+        if host is None or host.get("theme") == self._net_host_theme:
+            return
+        key, name = host.get("theme", ""), host.get("theme_name", "")
+        self._net_host_theme = key
+        if key == (self.theme_key or ""):
+            return
+        busy = [w for w in self.winfo_children() if isinstance(w, tk.Toplevel) and not isinstance(w, NetWindow)]
+        if busy:
+            self.net_note(f"El anfitrión abrió «{name}». Vuelve al menú y elige ese tema para tocar juntos.")
+            return
+        if not key:
+            self.theme_var.set(NO_THEME)
+        else:
+            match = next((n for n, path in self.themes if theme_key(path) == key), None)
+            if match is None:
+                self.net_note(f"El anfitrión abrió «{name}», pero no está en tu carpeta songs/.")
+                return
+            self.theme_var.set(match)
+        self.choose_theme()
+        self.net_note(f"Abrí el tema del anfitrión: {name}.")
+
+
+# ==========================================================================
+# Red local (Wi-Fi)
+# ==========================================================================
+class NetWindow(tk.Toplevel):
+    """Create a sala (host) or join one; who is in it; what happened."""
+
+    def __init__(self, menu):
+        super().__init__(menu)
+        self.menu = menu
+        self.net = menu.net
+        self.title("Tocar en red (Wi-Fi)")
+        self.configure(bg=BG)
+        self.minsize(640, 700)
+        self.finder = network.Finder()
+        self.finder_ok = self.finder.start()
+        self._salas = []
+        self._build()
+        self.protocol("WM_DELETE_WINDOW", self.close)
+        self._tick()
+
+    def _build(self):
+        root = ttk.Frame(self, padding=16)
+        root.pack(fill="both", expand=True)
+        ttk.Label(root, text="Tocar en red", style="H1.TLabel").pack(anchor="w")
+        ttk.Label(root, text="Todas las laptops en la misma Wi-Fi. Una crea la sala y las demás se unen. Después, "
+                             "Empezar o Detener en cualquiera arranca o detiene a todas a la vez: mismo compás, "
+                             "misma cuenta y mismo tempo. Los invitados abren solos el tema del anfitrión.",
+                  style="BgMuted.TLabel", wraplength=600, justify="left").pack(anchor="w", pady=(2, 10))
+
+        row = ttk.Frame(root)
+        row.pack(fill="x")
+        ttk.Label(row, text="Tu nombre:").pack(side="left")
+        self.name_var = tk.StringVar(value=self.net.name)
+        name = ttk.Entry(row, textvariable=self.name_var, width=24)
+        name.pack(side="left", padx=8)
+        name.bind("<Return>", lambda _e: self._save_name())
+        name.bind("<FocusOut>", lambda _e: self._save_name())
+        ips = network.local_ips()
+        ttk.Label(row, text=f"Tu IP: {', '.join(ips) or 'sin red'}", style="BgMuted.TLabel").pack(side="right")
+
+        host = ttk.Frame(root, style="Panel.TFrame", padding=10)
+        host.pack(fill="x", pady=(10, 0))
+        ttk.Label(host, text="Crear sala", style="H2.TLabel").grid(row=0, column=0, sticky="w")
+        self.host_btn = ttk.Button(host, text="Crear sala (ser anfitrión)", command=self._host)
+        self.host_btn.grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.host_only = tk.BooleanVar(value=False)
+        ttk.Checkbutton(host, text="Solo el anfitrión empieza y detiene", variable=self.host_only,
+                        style="Panel.TCheckbutton",
+                        command=lambda: self.net.set_host_only(self.host_only.get())).grid(row=1, column=1,
+                                                                                          sticky="w", padx=12)
+
+        join = ttk.Frame(root, style="Panel.TFrame", padding=10)
+        join.pack(fill="x", pady=(10, 0))
+        ttk.Label(join, text="Unirse a una sala", style="H2.TLabel").grid(row=0, column=0, columnspan=3, sticky="w")
+        self.salas_box = tk.Listbox(join, height=4, width=60, bg=BG, fg=FG, selectbackground="#3f8fd2",
+                                    highlightthickness=0, borderwidth=0, exportselection=False,
+                                    font=("TkDefaultFont", 11))
+        self.salas_box.grid(row=1, column=0, columnspan=3, sticky="we", pady=(6, 6))
+        self.salas_box.bind("<Double-Button-1>", lambda _e: self._join_selected())
+        self.join_btn = ttk.Button(join, text="Unirse a la sala elegida", command=self._join_selected)
+        self.join_btn.grid(row=2, column=0, sticky="w")
+        ttk.Label(join, text="o IP del anfitrión:", style="Muted.TLabel").grid(row=2, column=1, sticky="e", padx=8)
+        ipf = ttk.Frame(join, style="Panel.TFrame")
+        ipf.grid(row=2, column=2, sticky="w")
+        self.ip_var = tk.StringVar(value=self.menu.settings.get("net_last_ip", ""))
+        ip = ttk.Entry(ipf, textvariable=self.ip_var, width=16)
+        ip.pack(side="left")
+        ip.bind("<Return>", lambda _e: self._join_ip())
+        self.ip_btn = ttk.Button(ipf, text="Conectar", command=self._join_ip)
+        self.ip_btn.pack(side="left", padx=4)
+
+        room = ttk.Frame(root, style="Panel.TFrame", padding=10)
+        room.pack(fill="both", expand=True, pady=(10, 0))
+        top = ttk.Frame(room, style="Panel.TFrame")
+        top.pack(fill="x")
+        ttk.Label(top, text="En la sala", style="H2.TLabel").pack(side="left")
+        self.leave_btn = ttk.Button(top, text="Salir de la sala", command=self._leave)
+        self.leave_btn.pack(side="right")
+        self.state_label = ttk.Label(room, text="", style="Panel.TLabel", wraplength=600, justify="left")
+        self.state_label.pack(anchor="w", pady=(4, 4))
+        self.roster_box = tk.Listbox(room, height=4, bg=BG, fg=FG, highlightthickness=0, borderwidth=0,
+                                     activestyle="none", selectbackground=BG, font=("TkDefaultFont", 11))
+        self.roster_box.pack(fill="both", expand=True)
+        self.log_label = ttk.Label(room, text="", style="Muted.TLabel", justify="left", wraplength=600)
+        self.log_label.pack(anchor="w", pady=(6, 0))
+
+        ttk.Label(root, text="¿No aparece la sala? Revisen que estén en la misma Wi-Fi. En Windows, la primera vez "
+                             "acepta el aviso del Firewall (Permitir acceso, redes privadas). Algunas redes, como "
+                             "las de universidades, no dejan que los computadores se hablen: usen el hotspot de un "
+                             "celular o un router propio.", style="BgMuted.TLabel", wraplength=600,
+                  justify="left").pack(anchor="w", pady=(10, 0))
+
+    def _save_name(self):
+        name = self.name_var.get().strip()[:24]
+        if name and name != self.net.name:
+            self.net.rename(name)
+            self.menu.settings["net_name"] = name
+            save_settings(self.menu.settings)
+
+    def _host(self):
+        self._save_name()
+        self.menu.net_info()
+        try:
+            port = self.net.host()
+        except OSError as exc:
+            self.menu.net_note(f"No se pudo crear la sala: {exc}")
+            return
+        self.net.set_host_only(self.host_only.get())
+        ips = ", ".join(network.local_ips()) or "?"
+        self.menu.net_note(f"Sala creada. Los demás la ven como «{self.net.name}» (o escriben {ips}"
+                           + (f":{port}" if port != network.TCP_PORT else "") + ").")
+
+    def _join_selected(self):
+        sel = self.salas_box.curselection()
+        if not sel or sel[0] >= len(self._salas):
+            self.menu.net_note("Elige una sala de la lista (o escribe la IP del anfitrión).")
+            return
+        sala = self._salas[sel[0]]
+        self._join(sala["addr"], sala["port"])
+
+    def _join_ip(self):
+        text = self.ip_var.get().strip()
+        if not text:
+            return
+        addr, _, port = text.partition(":")
+        self.menu.settings["net_last_ip"] = text
+        save_settings(self.menu.settings)
+        self._join(addr, int(port) if port.isdigit() else network.TCP_PORT)
+
+    def _join(self, addr, port):
+        self._save_name()
+        self.menu.net_info()
+        self.menu._net_host_theme = None
+        try:
+            self.net.join(addr, port)
+        except OSError as exc:
+            self.menu.net_note(f"No se pudo conectar a {addr}: {exc}")
+            return
+        self.menu.net_note(f"Conectado a {addr}.")
+
+    def _leave(self):
+        if self.net.leave():
+            self.menu.net_note("Saliste de la sala.")
+
+    def _tick(self):
+        if not self.winfo_exists():
+            return
+        role = self.net.role
+        alone = role is None
+        for b in (self.host_btn, self.join_btn, self.ip_btn):
+            b.state(["!disabled"] if alone else ["disabled"])
+        self.leave_btn.state(["disabled"] if alone else ["!disabled"])
+        # salas found
+        salas = sorted(self.finder.salas(), key=lambda f: f["name"])
+        salas = [f for f in salas if f["id"] != self.net.id]
+        sel = self.salas_box.curselection()
+        chosen = self._salas[sel[0]]["id"] if sel and sel[0] < len(self._salas) else None
+        lines = [f"{f['name']}   ·   {f['theme'] or 'sin tema'}   ·   {f['count']} laptop"
+                 f"{'s' if f['count'] != 1 else ''}   ({f['addr']})" for f in salas]
+        if lines != list(self.salas_box.get(0, "end")):
+            self.salas_box.delete(0, "end")
+            for line in lines:
+                self.salas_box.insert("end", line)
+        self._salas = salas
+        for i, f in enumerate(salas):
+            if f["id"] == chosen:
+                self.salas_box.selection_set(i)
+        if not salas and alone:
+            hint = ("Buscando salas en la red..." if self.finder_ok else
+                    f"No puedo escuchar avisos de salas ({self.finder.error}); usa la IP del anfitrión.")
+        else:
+            hint = ""
+        # the room
+        if role == "host":
+            state = "Eres el anfitrión. Los demás pueden unirse ahora."
+        elif role == "guest":
+            sync = (f"reloj sincronizado (ida y vuelta {self.net.rtt * 1000:.0f} ms)" if self.net.rtt is not None
+                    else "sincronizando reloj...")
+            state = f"Conectado a {self.net.host_addr} · {sync}"
+        else:
+            state = hint or "No estás en ninguna sala."
+        self.state_label.config(text=state)
+        rows = []
+        for m in self.net.roster:
+            playing = ", ".join(m.get("playing") or []) or "en el menú"
+            rows.append(f"{'★ ' if m.get('host') else '   '}{m.get('name', '?')}"
+                        f"{' (tú)' if m.get('id') == self.net.id else ''}   ·   {m.get('theme_name', '')}"
+                        f"   ·   {playing}")
+        if rows != list(self.roster_box.get(0, "end")):
+            self.roster_box.delete(0, "end")
+            for r in rows:
+                self.roster_box.insert("end", r)
+        self.log_label.config(text="\n".join(self.menu.net_log[-6:]))
+        self.after(400, self._tick)
+
+    def close(self):
+        self.finder.stop()
+        self.menu.net_window = None
         self.destroy()
 
 
@@ -1369,6 +1741,7 @@ class PlayWindow(tk.Toplevel):
         self.chooser = chooser
         self.engine = engine
         self.profile = profile
+        chooser.menu.net_add(self)
         self.ins = instrument_by_id(profile["sound"])
         self.slots = profile["slots"]
         self.drums = self.ins.kind == "drums"
@@ -1486,6 +1859,8 @@ class PlayWindow(tk.Toplevel):
         sub = f"   {self.ins.name}" + (f"  ·  {self.role['name']}" if self.role else "")
         ttk.Label(header, text=sub, style="BgMuted.TLabel").pack(side="left")
         ttk.Button(header, text="← Volver", command=self.back, takefocus=False).pack(side="right")
+        ttk.Label(header, textvariable=self.chooser.menu.net_status, style="BgMuted.TLabel").pack(side="right",
+                                                                                                 padx=12)
         if self.session:
             self.session.build_strip(self, root)
 
@@ -1943,22 +2318,41 @@ class PlayWindow(tk.Toplevel):
     def _toggle_run(self):
         if self.running:
             self._stop_run()
+            self.chooser.menu.net_stop()
         else:
-            self.speed = self._speed()
+            speed = self._speed()
             e = self.song.events[self.cur_idx]
-            self.start_beat = max(0.0, self.song.bar_start(self.song.bar_of(e["start"])))
-            self.sec0 = self.song.beat_to_seconds(self.start_beat)
-            beat_len = 60.0 / (self.song.bpm_at(self.start_beat) * self.speed)
-            self.countin = self.song.meter * beat_len
-            clicks = [(int(round(i * beat_len * SR)), i == 0) for i in range(self.song.meter)]
-            self.engine.start_clock(clicks + self._clicks_from(self.start_beat), audible=True)
-            self._auto_reset(self.sec0)
-            self._band_reset(self.sec0)
-            self.running = True
-            self.start_button.config(text="\u25A0 Detener")
-            if self.session:
-                self.session.started(self)
+            start_beat = max(0.0, self.song.bar_start(self.song.bar_of(e["start"])))
+            sec0 = self.song.beat_to_seconds(start_beat)
+            countin = self.song.meter * 60.0 / (self.song.bpm_at(start_beat) * speed)
+            # connected: everyone starts together, at the moment the host fixes (net_begin, here too)
+            if not self.chooser.menu.net_start(sec0, countin, speed, self.bpm_text()):
+                self.speed, self.start_beat, self.sec0, self.countin = speed, start_beat, sec0, countin
+                self._begin()
         self._refocus()
+
+    def _begin(self):
+        """Starts the clock at self.sec0 (song seconds) after a count-in of self.countin seconds."""
+        beat_len = self.countin / self.song.meter
+        clicks = [(int(round(i * beat_len * SR)), i == 0) for i in range(self.song.meter)]
+        self.engine.start_clock(clicks + self._clicks_from(self.start_beat), audible=True)
+        self._auto_reset(self.sec0)
+        self._band_reset(self.sec0)
+        self.running = True
+        self.start_button.config(text="\u25A0 Detener")
+        if self.session:
+            self.session.started(self)
+
+    def net_begin(self, sec0, countin, speed, bpm_text):
+        """The network start: same song time, count-in and tempo on every laptop."""
+        if self.song is None:
+            return False
+        self.song_bpm_var.set(bpm_text)
+        self.speed, self.sec0, self.countin = speed, sec0, countin
+        self.start_beat = self.song.seconds_to_beat(sec0)
+        self._set_chord(self.song.event_index_at(self.start_beat + 1e-6))
+        self._begin()
+        return True
 
     def _stop_run(self):
         self.engine.stop_clock()
@@ -1987,6 +2381,9 @@ class PlayWindow(tk.Toplevel):
             return
         if self.session:  # every window must jump together: start all again from there
             return self.session.restart_at(self, beat)
+        if self.chooser.menu.net.active:  # every laptop jumps too: start all again from there
+            self._stop_run()
+            return self.start_from_beat(beat)
         self.sec0 = self.song.beat_to_seconds(beat) - (max(t, self.countin) - self.countin) * self.speed
         self.engine.set_clicks(self._clicks_from(beat))
         if self.auto or self.band:
@@ -2462,6 +2859,7 @@ class PlayWindow(tk.Toplevel):
         self.chooser.back_from_play()
 
     def teardown(self):
+        self.chooser.menu.net_remove(self)
         self._release_all()
         if self.auto or self.band:
             self.engine.clear_scheduled()
@@ -2827,6 +3225,8 @@ class PatternWindow(tk.Toplevel):
         events = track_events(path, self.info["track"])
         real = drum_patterns._bars(self.song, events, self.shift, self.song.meter, self.part)
         self.seq = drum_patterns.PatternSequencer(self.info, real, self.part, mode)
+        self.seq.listeners.append(lambda cmd: self.menu.net_pattern(profile["name"], cmd, self.patterns))
+        self.menu.net_add(self)
         # the rest of the kit (the other drummer's part) sounds with the band, as in the song
         self.other_drums = (drum_patterns._bars(self.song, events, self.shift, self.song.meter)
                             if self.part else {})
@@ -2894,6 +3294,7 @@ class PatternWindow(tk.Toplevel):
         ttk.Label(top, text=f"   {self.TITLES[self.seq.mode]} por patrones  ·  {self.menu.theme_name}",
                   style="BgMuted.TLabel").pack(side="left")
         ttk.Button(top, text="← Volver", command=self.back, takefocus=False).pack(side="right")
+        ttk.Label(top, textvariable=self.menu.net_status, style="BgMuted.TLabel").pack(side="right", padx=12)
         if self.session:
             self.session.build_strip(self, root)
 
@@ -3060,13 +3461,35 @@ class PatternWindow(tk.Toplevel):
     def _toggle(self):
         if self.running:
             self._stop()
+            self.menu.net_stop()
             return
-        self.speed = self._speed()
+        speed = self._speed()
         bar = self.song.bar_of(dict(self.sections).get(self.section_var.get(), 0.0) + 1e-6)
         bar = max(1, bar)
-        self.sec0 = self._bar_sec(bar)
-        beat_len = 60.0 / (self.song.bpm_at(self.song.seconds_to_beat(self.sec0)) * self.speed)
-        self.countin = self.song.meter * beat_len
+        sec0 = self._bar_sec(bar)
+        countin = self.song.meter * 60.0 / (self.song.bpm_at(self.song.seconds_to_beat(sec0)) * speed)
+        # connected: everyone starts together, at the moment the host fixes (net_begin, here too)
+        if not self.menu.net_start(sec0, countin, speed, self.bpm_text()):
+            self.speed, self.sec0, self.countin = speed, sec0, countin
+            self._begin(bar)
+
+    def _first_bar_from(self, sec0):
+        """The first whole bar of the drums at or after song time sec0."""
+        bar = max(1, self.song.bar_of(self.song.seconds_to_beat(sec0) - self.shift + 1e-6))
+        if self._bar_sec(bar) < sec0 - 1e-3:
+            bar += 1
+        return bar
+
+    def net_begin(self, sec0, countin, speed, bpm_text):
+        """The network start: same song time, count-in and tempo on every laptop."""
+        self.bpm_var.set(bpm_text)
+        self.speed, self.sec0, self.countin = speed, sec0, countin
+        self._begin(self._first_bar_from(sec0))
+        return True
+
+    def _begin(self, bar):
+        """Starts the clock at self.sec0 after self.countin seconds; the patterns from `bar`."""
+        beat_len = self.countin / self.song.meter
         clicks = [(int(round(i * beat_len * SR)), i == 0) for i in range(self.song.meter)]
         b = int(np.ceil(self.song.seconds_to_beat(self.sec0) - 1e-6))
         while b <= self.song.total_beats:  # metronome clicks (heard only with Clic on)
@@ -3103,9 +3526,7 @@ class PatternWindow(tk.Toplevel):
         """Another window started the clock: the patterns join from the first whole bar at/after sec0."""
         self.bpm_var.set(bpm_text)
         self.speed, self.sec0, self.countin = speed, sec0, countin
-        bar = max(1, self.song.bar_of(self.song.seconds_to_beat(sec0) - self.shift + 1e-6))
-        if self._bar_sec(bar) < sec0 - 1e-3:
-            bar += 1
+        bar = self._first_bar_from(sec0)
         self.next_bar = bar
         self.band_ptr = bisect_left(self.band_starts, sec0 - 1e-6)
         self.seq.start(bar)
@@ -3253,6 +3674,7 @@ class PatternWindow(tk.Toplevel):
         if self._tick_id:
             self.after_cancel(self._tick_id)
             self._tick_id = None
+        self.menu.net_remove(self)
         self.release_keys()
         self._stop()
         self.engine.clear_scheduled()
