@@ -125,6 +125,12 @@ la que suena se repite en loop, y la que elijas **entra cuando termina la que su
 tempo de la grabación. Los audios no se suben al repo (son de la canción original): cada baterista los copia a su
 carpeta `songs/`. Detalles en `secciones.py`.
 
+En red, **la batería lleva la canción**: en su ventana da *Abrir sala (Wi-Fi)* y queda como anfitrión; solo ella
+empieza y detiene. Los demás se unen, y cuando la batería da Empezar parten todos juntos. Cada instrumento toca su
+parte también por secciones (los mismos números): en pantalla ven a qué sección va la batería y deciden si la
+siguen con **Ctrl + la tecla** (Ctrl+3, por ejemplo). El cambio entra cuando termina la sección que tocan, así que
+las secciones siempre se completan. Las notas de cada sección caen como siempre.
+
 ### Batería
 La pista de batería se divide en dos instrumentos: **tambores** (bombo, bombo 2, caja, toms) y
 **platillos** (hi-hat, hi-hat abierto, ride, campana del ride, crash). Para usar grabaciones reales en vez de

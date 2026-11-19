@@ -625,6 +625,8 @@ class MainMenu(tk.Tk):
         elif kind == "pattern":
             if msg.get("id") != self.net.id:
                 c = msg.get("cmd", {})
+                if c.get("part") == "secciones":
+                    self.net_drums = {"pattern": c.get("pattern"), "first": None}
                 self.net_note(f"{msg.get('name')} ({msg.get('instrument')}): patrón {c.get('pattern', 0) + 1} "
                               f"{c.get('label', '')}")
         elif kind in ("note", "lost"):
@@ -1828,6 +1830,23 @@ class PlayWindow(tk.Toplevel):
             self._load_band(chooser.menu, profile)
         if self.drums or self.auto_drums or self.band:  # synthesise the drum hits now, not on the first hit
             threading.Thread(target=DrumKit.warm, daemon=True).start()
+        # sections: when the theme's drums play by recorded sections (secciones.py), every instrument follows
+        # its part section by section too: Ctrl + the section's key queues it, and it comes in when the
+        # section that plays ends. The notes are then laid on a timeline of their own (sec0 = 0).
+        self.sec_info = None
+        if song is not None and not self.drums and self.track is not None:
+            try:
+                self.sec_info = secciones.load(chooser.menu.theme_path)
+            except Exception as exc:
+                print("secciones:", repr(exc), flush=True)
+        if self.sec_info:
+            self.sseq = secciones.SectionSequencer(self.sec_info["sections"])
+            self.sec_bar_len = self.sec_info["meter"] * 60.0 / self.sec_info["bpm"]
+            self.src_auto = list(self.auto_events)
+            # the recorded drums play in the drummer's window: no MIDI drums in the band
+            self.src_band = [n for n in self.band_notes if n[3].kind != "drums"]
+            self.runs = []  # the bajadas follow the song's own timeline
+            self._sec_added = 0
         self.cur_idx = 0
         self.start_beat = 0.0   # song beat that corresponds to transport beat 0
         self.running = False
@@ -2333,6 +2352,11 @@ class PlayWindow(tk.Toplevel):
         if self.running:
             self._stop_run()
             self.chooser.menu.net_stop()
+        elif self.sec_info:
+            countin = self.sec_bar_len
+            if not self.chooser.menu.net_start(0.0, countin, 1.0, f"{self.sec_info['bpm']:g}"):
+                self.countin = countin
+                self._sec_begin()
         else:
             speed = self._speed()
             e = self.song.events[self.cur_idx]
@@ -2361,6 +2385,10 @@ class PlayWindow(tk.Toplevel):
         """The network start: same song time, count-in and tempo on every laptop."""
         if self.song is None:
             return False
+        if self.sec_info:  # by sections: everyone starts together, each from its own first section
+            self.countin = countin
+            self._sec_begin()
+            return True
         self.song_bpm_var.set(bpm_text)
         self.speed, self.sec0, self.countin = speed, sec0, countin
         self.start_beat = self.song.seconds_to_beat(sec0)
@@ -2369,6 +2397,10 @@ class PlayWindow(tk.Toplevel):
         return True
 
     def _stop_run(self):
+        if self.sec_info:
+            self.sseq.reset()
+            self.auto_events, self.auto_starts = list(self.src_auto), [ev[0] for ev in self.src_auto]
+            self.band_notes, self.band_starts = list(self.src_band), [n[0] for n in self.src_band]
         self.engine.stop_clock()
         if self.auto:
             self.engine.all_off()
@@ -2643,6 +2675,8 @@ class PlayWindow(tk.Toplevel):
         self._set_chord(target)
 
     def _tick(self):
+        if self.sec_info:
+            return self._sec_tick()
         t = self.engine.clock_seconds() if self.running else None
         e = self.song.events[self.cur_idx]
         if self.running and t is None:
@@ -2779,6 +2813,9 @@ class PlayWindow(tk.Toplevel):
         self._light(i, False)
 
     def _on_press(self, event):
+        if self.sec_info and event.state & 0x4 and event.keysym.lower() in secciones.KEYS[:len(self.sseq.sections)]:
+            self.sseq.choose(secciones.KEYS.index(event.keysym.lower()))
+            return "break"
         if isinstance(event.widget, (tk.Entry, ttk.Entry)):  # typing the BPM
             return
         k = event.keysym.lower()
@@ -2838,6 +2875,112 @@ class PlayWindow(tk.Toplevel):
                 self.after_cancel(self.pending_release.pop(k))
             self._really_release(k)
 
+    # ---- by sections (secciones.py) ---------------------------------------------
+    def _sec_song_range(self, i):
+        sec = self.sec_info["sections"][i]
+        m = self.sec_info["meter"]
+        return (self.song.beat_to_seconds((sec.bar - 1) * m - self.song.offset),
+                self.song.beat_to_seconds((sec.bar - 1 + sec.bars) * m - self.song.offset))
+
+    def _sec_add(self, bar, i):
+        """Lays section i's notes on the timeline, starting at bar `bar` of the performance."""
+        a, b = self._sec_song_range(i)
+        v0 = bar * self.sec_bar_len
+        for on, off, pitch in self.src_auto:
+            if a <= on < b:
+                self.auto_events.append((v0 + on - a, v0 + min(off, b) - a, pitch))
+                self.auto_starts.append(v0 + on - a)
+        for on, off, pitch, ins in self.src_band:
+            if a <= on < b:
+                self.band_notes.append((v0 + on - a, v0 + min(off, b) - a, pitch, ins))
+                self.band_starts.append(v0 + on - a)
+
+    def _sec_extend(self, t):
+        """Decides the sections far enough ahead to show their notes falling (HW_AHEAD seconds)."""
+        while self.countin + self.sseq.end_bar() * self.sec_bar_len < t + self.HW_AHEAD + 0.5:
+            self.sseq.advance()
+        while self._sec_added < len(self.sseq.plan):
+            self._sec_add(*self.sseq.plan[self._sec_added])
+            self._sec_added += 1
+
+    def _sec_reset(self):
+        self.sec0, self.speed = 0.0, 1.0
+        if self.sseq.first == 0 and not self.sseq.plan:
+            drums = getattr(self.chooser.menu, "net_drums", None)
+            if drums is not None and drums.get("first") is not None:
+                self.sseq.first = drums["first"]
+        self.sseq.start()
+        self.auto_events, self.auto_starts, self.band_notes, self.band_starts = [], [], [], []
+        self._sec_added = 0
+        self._sec_extend(0.0)
+        self._auto_reset(0.0)
+        self._band_reset(0.0)
+
+    def _sec_begin(self):
+        beat = self.sec_bar_len / self.sec_info["meter"]
+        clicks, k = [], 0
+        while k * beat < 3600:
+            t = self.countin + (k - self.sec_info["meter"]) * beat
+            if t >= 0:
+                clicks.append((int(round(t * SR)), k % self.sec_info["meter"] == 0))
+            k += 1
+        self.engine.start_clock(clicks, audible=True)
+        self._sec_reset()
+        self.running = True
+        self.start_button.config(text="\u25A0 Detener")
+        if self.session:
+            self.session.started(self)
+
+    def _sec_tick(self):
+        names = self.sseq.sections
+        t = self.engine.clock_seconds() if self.running else None
+        if self.running and t is None:
+            self._stop_run()
+        drums = getattr(self.chooser.menu, "net_drums", None)
+        drum_txt = ""
+        if drums and drums.get("pattern") is not None and 0 <= drums["pattern"] < len(names):
+            d = drums["pattern"]
+            drum_txt = f"   ·   La batería va a: {secciones.KEY_TEXT[d]} {names[d].name}"
+        now = None
+        if t is not None:
+            self._sec_extend(t)
+            if self.auto:
+                self._auto_schedule(t)
+            if self.band:
+                self._band_schedule(t)
+            tv = max(0.0, t - self.vis_delay)
+            pos = tv - self.countin
+            now = t - self.countin
+            if pos < 0:
+                self._set_text(self.bar_label, f"Cuenta:  {int(-pos / (self.sec_bar_len / self.sec_info['meter'])) + 1}"
+                               + drum_txt)
+            else:
+                if self.engine.metro_audible != self.click_var.get() and self._active():
+                    self.engine.metro_audible = self.click_var.get()
+                at = self.sseq.at(pos / self.sec_bar_len)
+                txt = ""
+                if at:
+                    i, inside = at
+                    txt = f"Sección {secciones.KEY_TEXT[i]} {names[i].name}   ·   compás {int(inside) + 1} de {names[i].bars}"
+                q = self.sseq.queued
+                if q is not None:
+                    txt += f"   ·   Entra después: {secciones.KEY_TEXT[q]} {names[q].name}"
+                self._set_text(self.bar_label, txt + drum_txt)
+        else:
+            f = self.sseq.first
+            self._set_text(self.bar_label, f"Detenido   ·   partes con: {secciones.KEY_TEXT[f]} {names[f].name}"
+                           + drum_txt)
+        keys = "  ·  ".join(f"{secciones.KEY_TEXT[i]} {s.name}" for i, s in enumerate(names))
+        self._set_text(self.next_label, f"Ctrl + tecla cambia de sección (entra al terminar la que suena):   {keys}")
+        if self.highway is not None and self._active():
+            if t is not None:
+                self._draw_highway(max(0.0, t - self.vis_delay) - self.countin)
+            else:
+                self._draw_highway(0.0 if not self.sseq.plan else 0.0)
+        if getattr(self, "_tick_id", None):
+            self.after_cancel(self._tick_id)
+        self._tick_id = self.after(33, self._tick)
+
     # ---- several instruments (PlaySession) ----------------------------------------
     def release_keys(self):
         self._release_all()
@@ -2856,6 +2999,12 @@ class PlayWindow(tk.Toplevel):
     def follow(self, sec0, countin, speed, bpm_text):
         """Another window started the clock: play along from the same song time."""
         if self.song is None:
+            return
+        if self.sec_info:
+            self.countin, self.sec0, self.speed = countin, 0.0, 1.0
+            self._sec_reset()
+            self.running = True
+            self.start_button.config(text="\u25A0 Detener")
             return
         self.song_bpm_var.set(bpm_text)
         self.speed, self.sec0, self.countin = speed, sec0, countin
@@ -3800,6 +3949,8 @@ class SectionWindow(tk.Toplevel):
         self.start_button.pack(side="left")
         ttk.Label(ctl, text=f"   Tempo de la grabación: {self.info['bpm']:g} BPM",
                   style="BgMuted.TLabel").pack(side="left")
+        ttk.Button(ctl, text="Abrir sala (Wi-Fi)", command=self._open_room, takefocus=False).pack(
+            side="left", padx=(16, 0))
         self.band_var = tk.BooleanVar(value=self.mode == "band" and self.plays_band)
         self.band_vol = tk.IntVar(value=60)
         if self.plays_band:
@@ -3859,7 +4010,21 @@ class SectionWindow(tk.Toplevel):
         self.seq.choose(i)
         if not self.running:
             self.sec0 = self._section_sec(self.sections[i])
+        # the others see where the drums go (here too, for the other windows of this laptop)
+        self.menu.net_drums = {"pattern": i, "first": None if self.running else i}
         self.focus_set()
+
+    def _open_room(self):
+        """The drums lead: they open the room, and only they start and stop."""
+        net = self.menu.net
+        try:
+            if net.role != "host":
+                net.host()
+            net.set_host_only(True)
+            self.menu.net_note("La batería abrió la sala: solo ella empieza y detiene.")
+        except OSError as exc:
+            self.status.config(text=f"No se pudo abrir la sala: {exc}")
+        self.menu.open_net()
 
     def _on_press(self, event):
         k = event.keysym.lower()

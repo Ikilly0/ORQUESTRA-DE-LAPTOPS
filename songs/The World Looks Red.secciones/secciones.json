@@ -68,7 +68,13 @@
    "nombre": "Cierre",
    "archivo": "11 Cierre.wav",
    "compas": 65,
-   "compases": 2
+   "compases": 8
+  },
+  {
+   "nombre": "Puente (sin batería)",
+   "archivo": "12 Puente sin bateria.wav",
+   "compas": 115,
+   "compases": 8
   }
  ]
 }
