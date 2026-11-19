@@ -10,6 +10,7 @@ Profile format:
 import json
 import os
 
+import themes
 from instruments import DRUM_GROUP_NAMES, DRUM_GROUPS, DRUM_PIECES, INSTRUMENTS
 
 MAX_KEYS = 40
@@ -203,24 +204,25 @@ def theme_profiles(path):
     return _apply_merges(path, out, home_top)
 
 
-# Tracks that one person plays together: they take turns in the song, never at the same time.
-# theme -> [(new name, [track indexes, main one first])]
-THEME_MERGES = {
-    "heaven pierce her - order.mid": [("Guitarra 2 + solista", [9, 8])],
-}
-
+# Per-theme settings (tracks played together, rows of their own, bajadas) live in songs/temas.json,
+# read by themes.py.
 
 # Instruments that play on one row of their own, so a phrase never jumps from L to Q (the note would cut).
-# theme -> {instrument name: keys, low to high}
 NUMBER_ROW = ["grave"] + ROW_NUMBERS  # ` 1 2 3 4 5 6 7 8 9 0 - =
-THEME_KEYS = {
-    "heaven pierce her - order.mid": {"Cello": NUMBER_ROW},
+ROWS = {
+    "numeros": NUMBER_ROW,
+    "superior": ROW_TOP,
+    "central": ROW_HOME,
+    "inferior": ROW_BOTTOM,
 }
 
 
 def theme_row_keys(path, profile):
     """The keys this theme instrument uses instead of the usual A..L, Q..P (None: the usual ones)."""
-    keys = THEME_KEYS.get(theme_key(path), {}).get(profile.get("name", "").split(" (")[0]) if path else None
+    if not path:
+        return None
+    row = themes.row_keys(path).get(profile.get("name", "").split(" (")[0])
+    keys = ROWS.get(str(row).lower()) if isinstance(row, str) else row
     return keys if keys and len(profile.get("slots", [])) <= len(keys) else None
 
 
@@ -308,15 +310,14 @@ def merged_profile(path, name, tracks, sound, keys=None):
 
 
 def theme_merges(path):
-    return THEME_MERGES.get(theme_key(path), [])
+    """Tracks that one person plays together (they take turns, never at the same time):
+    [(new name, [track indexes, main one first])]."""
+    return themes.merges(path) if path else []
 
 
 # Fast runs ("bajadas") that one instrument plays with a single gesture, Shift + Espacio, instead of
-# note by note. theme -> instrument names. The runs themselves are found in the MIDI: chromatic
-# descents of RUN_MIN_NOTES notes or more, each note right after the previous one.
-THEME_RUNS = {
-    "heaven pierce her - order.mid": ["Guitarra 2 + solista"],
-}
+# note by note. Which instruments: "bajadas" in songs/temas.json. The runs themselves are found in the MIDI:
+# chromatic descents of RUN_MIN_NOTES notes or more, each note right after the previous one.
 RUN_MIN_NOTES = 12
 RUN_MAX_GAP = 0.25  # beats between two notes of a run
 
@@ -337,7 +338,7 @@ def find_runs(events):
 
 
 def has_runs(path, profile):
-    names = THEME_RUNS.get(theme_key(path), []) if path else []
+    names = themes.run_instruments(path) if path else []
     return profile.get("name", "").split(" (")[0] in names and isinstance(profile.get("track"), int)
 
 

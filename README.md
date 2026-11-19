@@ -124,15 +124,40 @@ los sonidos sintetizados, pon `samples/<pieza>.wav` (ver `samples/LEEME.txt`).
 
 ### Pistas juntas
 Pistas que una sola persona puede tocar porque se turnan se juntan en un instrumento (en Order:
-**Guitarra 2 + solista**). Se configura en `THEME_MERGES` de `profiles.py`.
+**Guitarra 2 + solista**). Se configura en `songs/temas.json` (`juntar`, ver *Agregar un tema*).
 
 ### Cello en la fila de números
 En Order, el **Cello** se toca en la fila de números, de **`** a **=** (` 1 2 3 4 5 6 7 8 9 0 - =, de grave a
-agudo), así sus frases no saltan de la L a la Q y las notas no se cortan. Se configura en `THEME_KEYS` de
-`profiles.py`; un Cello que ya tenías guardado con las teclas de siempre se mueve solo la próxima vez que abras el tema.
+agudo), así sus frases no saltan de la L a la Q y las notas no se cortan. Se configura en `songs/temas.json`
+(`teclas`); un Cello que ya tenías guardado con las teclas de siempre se mueve solo la próxima vez que abras el tema.
 
 ### Agregar un tema
-Copia el `.mid` a `songs/`. Tempo y cambios de tempo del MIDI se respetan.
+1. Copia el `.mid` a `songs/`. Con eso ya aparece en la lista: la app arma un instrumento por pista y respeta
+   tempo y cambios de tempo del MIDI.
+2. Si tiene batería: `python drum_patterns.py "songs/Tema.mid"` (ver *Batería por patrones*).
+3. Opcional, en `songs/temas.json`, una entrada con lo que no se puede adivinar del MIDI. Solo `archivo` es
+   obligatorio:
+
+```json
+{
+  "archivo": "heaven pierce her - order",
+  "nombre": "Order - Ultrakill",
+  "juntar": [{"nombre": "Guitarra 2 + solista", "pistas": ["Guitar Etc", "Lead Guitar"]}],
+  "teclas": {"Cello": "numeros"},
+  "bajadas": ["Guitarra 2 + solista"]
+}
+```
+
+- `archivo`: palabras del nombre del `.mid` (da igual mayúsculas). Si varias entradas calzan gana la más
+  larga: `order` nombra todas las versiones de Order y `heaven pierce her - order` agrega los ajustes solo
+  al MIDI original. Si el archivo empieza con esas palabras, lo que sigue queda entre paréntesis
+  (*Order - Ultrakill (v1 simplificada)*).
+- `nombre`: cómo aparece en la lista.
+- `juntar`: pistas que toca una sola persona, por su nombre en el MIDI (o su número); la primera es la principal.
+- `teclas`: instrumento → fila propia (`numeros`, `superior`, `central` o `inferior`).
+- `bajadas`: instrumentos que tocan sus bajadas cromáticas rápidas con Shift + Espacio.
+
+Ya hay entradas para *The World Looks White* y *The World Looks Red* (Ultrakill): basta copiar sus MIDI.
 
 ## Archivos
 
@@ -143,6 +168,7 @@ Copia el `.mid` a `songs/`. Tempo y cambios de tempo del MIDI se respetan.
 | `instruments.py` | Síntesis: piano, guitarras (Karplus-Strong + distorsión), cuerdas, coro, bajo, batería, etc. |
 | `audio.py` | Motor de audio: mezcla de voces, reloj de la canción, notas programadas al sample |
 | `song.py` | Lectura del MIDI: tempo, compás, acordes, pistas y notas |
+| `themes.py` | Ajustes de cada tema, leídos de `songs/temas.json` |
 
 `profiles.json` y `settings.json` se crean al usar la app y guardan tus instrumentos y volúmenes (no se suben al repo).
 

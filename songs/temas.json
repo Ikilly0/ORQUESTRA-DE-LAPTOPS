@@ -1,0 +1,27 @@
+{
+  "temas": [
+    {
+      "archivo": "order",
+      "nombre": "Order - Ultrakill"
+    },
+    {
+      "archivo": "heaven pierce her - order",
+      "nombre": "Order - Ultrakill",
+      "juntar": [{"nombre": "Guitarra 2 + solista", "pistas": ["Guitar Etc", "Lead Guitar"]}],
+      "teclas": {"Cello": "numeros"},
+      "bajadas": ["Guitarra 2 + solista"]
+    },
+    {
+      "archivo": "freesia",
+      "nombre": "Freesia - Guilty Gear"
+    },
+    {
+      "archivo": "the world looks white",
+      "nombre": "The World Looks White - Ultrakill"
+    },
+    {
+      "archivo": "the world looks red",
+      "nombre": "The World Looks Red - Ultrakill"
+    }
+  ]
+}

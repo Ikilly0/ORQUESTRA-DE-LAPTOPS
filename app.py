@@ -49,6 +49,7 @@ from audio import Engine, SequenceVoice  # noqa: E402
 import threading  # noqa: E402
 import drum_patterns  # noqa: E402
 import network  # noqa: E402
+import themes  # noqa: E402
 from instruments import DRUM_GROUPS, DRUM_PIECES, INSTRUMENTS, SR, DrumKit, app_data_dir, drum_group  # noqa: E402
 from profiles import (KEY_POSITIONS, apply_theme_keys, LAYOUTS, MAX_KEYS, theme_key, theme_profiles, default_profiles, free_key, drum_part_profiles, merged_profile, theme_merges,
                       track_pitch_counts, all_notes, note_slots,  # noqa: E402
@@ -127,25 +128,17 @@ SONG_DIRS = [SONGS_DIR] + ([os.path.join(RES_DIR, "songs")] if os.path.abspath(R
                            else [])
 NO_TRACK = "(ninguna: solo acordes)"
 NO_THEME = "Sin tema (modo libre)"
-# Friendly names for known files (matched against the lower-case file name)
-THEME_NAMES = [("order", "Order - Ultrakill"), ("freesia", "Freesia - Guilty Gear")]
 
 
 def theme_label(path):
-    stem = os.path.splitext(os.path.basename(path))[0]
-    low = stem.lower()
-    for key, name in THEME_NAMES:
-        if key in low:
-            # versions of a theme ("ORDER v2 simplificada ...") keep their words after the name
-            extra = stem[len(key):].strip(" -_") if low.startswith(key) else ""
-            return f"{name} ({extra})" if extra else name
-    return stem
+    """Name in the list: "nombre" from songs/temas.json, else the file name."""
+    return themes.label(path)
 
 
 def find_themes():
     """[(name, path)]: every .mid in the app's songs folder, then .mid files found elsewhere
     (Downloads, Desktop...) that aren't already there. Names must be unique."""
-    themes, seen_files, seen_names = [], set(), set()
+    found, seen_files, seen_names = [], set(), set()
     candidates = [p for d in SONG_DIRS for p in sorted(glob.glob(os.path.join(d, "*.mid*")))]
     candidates += [p for _, p in find_midi_files()]
     for path in candidates:
@@ -157,8 +150,8 @@ def find_themes():
         while name in seen_names:
             name += " *"
         seen_names.add(name)
-        themes.append((name, path))
-    return themes
+        found.append((name, path))
+    return found
 
 
 def load_settings():
