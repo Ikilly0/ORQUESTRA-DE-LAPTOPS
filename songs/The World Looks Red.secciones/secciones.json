@@ -1,0 +1,74 @@
+{
+ "bpm": 90,
+ "compas_tiempos": 4,
+ "desfase_audio": 0.0,
+ "nota": "Audio de la batería separada de la grabación original. compas = compás del MIDI del tema donde está la sección.",
+ "secciones": [
+  {
+   "nombre": "Intro",
+   "archivo": "01 Intro.wav",
+   "compas": 1,
+   "compases": 8
+  },
+  {
+   "nombre": "Ritmo fuerte",
+   "archivo": "02 Ritmo fuerte.wav",
+   "compas": 9,
+   "compases": 8
+  },
+  {
+   "nombre": "Ritmo suave",
+   "archivo": "03 Ritmo suave.wav",
+   "compas": 17,
+   "compases": 8
+  },
+  {
+   "nombre": "Ritmo medio",
+   "archivo": "04 Ritmo medio.wav",
+   "compas": 25,
+   "compases": 8
+  },
+  {
+   "nombre": "Ritmo fuerte 2",
+   "archivo": "05 Ritmo fuerte 2.wav",
+   "compas": 33,
+   "compases": 8
+  },
+  {
+   "nombre": "Transición",
+   "archivo": "06 Transición.wav",
+   "compas": 41,
+   "compases": 8
+  },
+  {
+   "nombre": "B, primera parte",
+   "archivo": "07 B, primera parte.wav",
+   "compas": 49,
+   "compases": 8
+  },
+  {
+   "nombre": "B, segunda parte",
+   "archivo": "08 B, segunda parte.wav",
+   "compas": 57,
+   "compases": 8
+  },
+  {
+   "nombre": "B final, primera parte",
+   "archivo": "09 B final, primera parte.wav",
+   "compas": 129,
+   "compases": 8
+  },
+  {
+   "nombre": "B final, segunda parte",
+   "archivo": "10 B final, segunda parte.wav",
+   "compas": 137,
+   "compases": 8
+  },
+  {
+   "nombre": "Cierre",
+   "archivo": "11 Cierre.wav",
+   "compas": 65,
+   "compases": 2
+  }
+ ]
+}

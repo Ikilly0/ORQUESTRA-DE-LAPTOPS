@@ -50,7 +50,9 @@ import threading  # noqa: E402
 import drum_patterns  # noqa: E402
 import network  # noqa: E402
 import themes  # noqa: E402
-from instruments import DRUM_GROUPS, DRUM_PIECES, INSTRUMENTS, SR, DrumKit, app_data_dir, drum_group  # noqa: E402
+import secciones  # noqa: E402
+from instruments import (DRUM_GROUPS, DRUM_PIECES, INSTRUMENTS, SR, BufferVoice, DrumKit, app_data_dir,  # noqa: E402
+                         drum_group)
 from profiles import (KEY_POSITIONS, apply_theme_keys, LAYOUTS, MAX_KEYS, theme_key, theme_profiles, default_profiles, free_key, drum_part_profiles, merged_profile, theme_merges,
                       track_pitch_counts, all_notes, note_slots,  # noqa: E402
                       is_drums, load_profiles, piano_layout, save_profiles, scale_notes,
@@ -1547,6 +1549,14 @@ class PlayChooser(tk.Toplevel):
         self.go.state(["!disabled"] if ok else ["disabled"])
         self.status.config(text=msg)
 
+    def _sections(self):
+        """The theme's drum sections (recorded audio, secciones.py), or None."""
+        try:
+            return secciones.load(self.menu.theme_path)
+        except Exception as exc:
+            print("secciones:", repr(exc), flush=True)
+            return None
+
     def _uses_patterns(self, p):
         """Theme drums always play by patterns (in every mode): the song needs a drum track."""
         return (p is not None and is_drums(p["sound"]) and self.song is not None
@@ -1569,6 +1579,10 @@ class PlayChooser(tk.Toplevel):
         self.withdraw()
         if len(ps) > 1:
             return self._play_several(ps, bpm)
+        sections = self._sections() if self._uses_patterns(p) else None
+        if sections:
+            SectionWindow(self, self.engine, p, sections, mode=self.mode_var.get())
+            return
         if self._uses_patterns(p):
             PatternWindow(self, self.engine, p, bpm=bpm, mode=self.mode_var.get())
             return
@@ -1585,8 +1599,15 @@ class PlayChooser(tk.Toplevel):
         if mode == "band":
             leader = next((p for p in ps if self._uses_patterns(p) or
                            (self.song is not None and self._profile_track(p) is not None)), None)
+        sections = self._sections()
+        drums_open = False
         for p in ps:
-            if self._uses_patterns(p):
+            if self._uses_patterns(p) and sections:
+                if not drums_open:  # one window plays the whole recorded kit
+                    SectionWindow(self, self.engine, p, sections, mode=mode, session=session,
+                                  plays_band=p is leader)
+                    drums_open = True
+            elif self._uses_patterns(p):
                 PatternWindow(self, self.engine, p, bpm=bpm, mode=mode, session=session,
                               plays_band=p is leader)
             else:
@@ -1705,7 +1726,7 @@ class PlaySession:
         origin.start_from_beat(beat)
 
     def only_patterns(self):
-        return all(isinstance(w, PatternWindow) for w in self.windows)
+        return all(isinstance(w, (PatternWindow, SectionWindow)) for w in self.windows)
 
     def close(self):
         if self.closing:
@@ -3669,6 +3690,352 @@ class PatternWindow(tk.Toplevel):
             self._tick_id = None
         self.menu.net_remove(self)
         self.release_keys()
+        self._stop()
+        self.engine.clear_scheduled()
+        self.destroy()
+
+
+class SectionWindow(tk.Toplevel):
+    """The theme's drums as sections of the real recording (secciones.py): the drummer picks one with
+    1..0 (- and = for the 11th and 12th), it loops, and a new choice waits until the one that plays ends.
+    The audio is a recording, so it always plays at its own tempo."""
+
+    TITLES = {"manual": "Manual", "band": "Práctica con banda", "auto": "Automático (práctica)"}
+
+    def __init__(self, chooser, engine, profile, info, mode="manual", session=None, plays_band=True):
+        super().__init__(chooser)
+        self.session = session
+        self.plays_band = plays_band
+        if session:
+            session.add(self)
+        self.chooser = chooser
+        self.menu = chooser.menu
+        self.engine = engine
+        self.profile = profile
+        self.song = chooser.song
+        self.info = info
+        self.mode = mode
+        self.sections = info["sections"]
+        self.bar_len = info["meter"] * 60.0 / info["bpm"]
+        self.seq = secciones.SectionSequencer(self.sections)
+        self.seq.listeners.append(lambda cmd: self.menu.net_pattern(profile["name"], cmd, self.sections))
+        self.menu.net_add(self)
+        self.vis_delay = engine.output_delay()
+        self.running = False
+        self.sec0 = self._section_sec(self.sections[0])
+        self.countin = 0.0
+        self.speed = 1.0
+        self.gain = [0.9]
+        self.band_gain = [0.5]
+        self.scheduled_upto = 0  # plan entries already handed to the engine
+        self.band_notes = self._load_band()
+        self.band_starts = [n[0] for n in self.band_notes]
+        self.band_ptr = 0
+        self.configure(bg=BG)
+        self.title(f"{profile['name']} por secciones - {self.menu.theme_name}")
+        self.protocol("WM_DELETE_WINDOW", self.back)
+        self._build()
+        self.bind("<KeyPress>", self._on_press)
+        bind_tab(self, session)
+        maximize(self)
+        if session is None:
+            self.focus_force()
+        self._tick_id = None
+        self._loading = True
+        threading.Thread(target=self._prepare, daemon=True).start()
+        self._tick()
+
+    def _prepare(self):
+        try:
+            secciones.prepare(self.info, SR)
+        except Exception as exc:  # a missing or broken file: say so instead of crashing
+            print("secciones:", repr(exc), flush=True)
+        self._loading = False
+
+    def _section_sec(self, s):
+        """Song time (s) where section s is in the theme."""
+        if self.song is None:
+            return 0.0
+        return self.song.beat_to_seconds((s.bar - 1) * self.info["meter"] - self.song.offset)
+
+    def _load_band(self):
+        if self.song is None:
+            return []
+        path = self.menu.theme_path
+        drum_tracks = {t["index"] for t in midi_tracks(path) if t["drums"]}
+        notes = []
+        for p in self.menu.profiles:
+            if p.get("theme") != self.menu.theme_key or not isinstance(p.get("track"), int):
+                continue
+            tracks = [p["track"]] + p.get("extra_tracks", [])
+            if drum_tracks & set(tracks):
+                continue
+            if self.session and any(p is q for q in self.session.profiles):
+                continue
+            ins = instrument_by_id(p["sound"])
+            for tr in tracks:
+                for b0, b1, pitch, _ch in track_events(path, tr):
+                    notes.append((self.song.beat_to_seconds(b0 - self.song.offset),
+                                  self.song.beat_to_seconds(b1 - self.song.offset), pitch, ins))
+        notes.sort(key=lambda n: n[0])
+        return notes
+
+    # ---- interface ----
+    def _build(self):
+        root = ttk.Frame(self, padding=14)
+        root.pack(fill="both", expand=True)
+        top = ttk.Frame(root)
+        top.pack(fill="x")
+        ttk.Label(top, text=self.profile["name"], style="Title.TLabel").pack(side="left")
+        ttk.Label(top, text=f"   {self.TITLES.get(self.mode, '')} por secciones  ·  {self.menu.theme_name}",
+                  style="BgMuted.TLabel").pack(side="left")
+        ttk.Button(top, text="← Volver", command=self.back, takefocus=False).pack(side="right")
+        ttk.Label(top, textvariable=self.menu.net_status, style="BgMuted.TLabel").pack(side="right", padx=12)
+        if self.session:
+            self.session.build_strip(self, root)
+        ctl = ttk.Frame(root)
+        ctl.pack(fill="x", pady=(10, 4))
+        self.start_button = ttk.Button(ctl, text="▶ Empezar  (Enter)", style="Go.TButton",
+                                       command=self._toggle, takefocus=False)
+        self.start_button.pack(side="left")
+        ttk.Label(ctl, text=f"   Tempo de la grabación: {self.info['bpm']:g} BPM",
+                  style="BgMuted.TLabel").pack(side="left")
+        self.band_var = tk.BooleanVar(value=self.mode == "band" and self.plays_band)
+        self.band_vol = tk.IntVar(value=60)
+        if self.plays_band:
+            ttk.Checkbutton(ctl, text="Banda", variable=self.band_var, takefocus=False).pack(side="left",
+                                                                                         padx=(16, 4))
+            ttk.Scale(ctl, from_=0, to=100, orient="horizontal", length=120, variable=self.band_vol,
+                      command=lambda _v: self._volumes()).pack(side="left")
+        ttk.Label(ctl, text="  Batería").pack(side="left", padx=(12, 4))
+        self.kit_vol = tk.IntVar(value=80)
+        ttk.Scale(ctl, from_=0, to=100, orient="horizontal", length=120, variable=self.kit_vol,
+                  command=lambda _v: self._volumes()).pack(side="left")
+        self.click_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(ctl, text="Clic", variable=self.click_var, takefocus=False).pack(side="left", padx=12)
+        self._volumes()
+        self.status = ttk.Label(root, text="", font=("TkDefaultFont", 15, "bold"))
+        self.status.pack(anchor="w", pady=(8, 0))
+        ttk.Label(root, text="Elige la sección con su tecla. La que suena se repite; la que elijas entra cuando "
+                             "termine la que suena, nunca a la mitad. Antes de Empezar, la tecla elige con cuál "
+                             "partes.", style="BgMuted.TLabel", wraplength=1500, justify="left").pack(
+            anchor="w", pady=(2, 10))
+        cards = ttk.Frame(root)
+        cards.pack(fill="both", expand=True)
+        self.cards = []
+        cols = 4
+        for i, _sec in enumerate(self.sections):
+            c = tk.Canvas(cards, height=110, bg=PANEL, highlightthickness=4, highlightbackground=PANEL)
+            c.grid(row=i // cols, column=i % cols, sticky="ew", padx=5, pady=5)
+            cards.columnconfigure(i % cols, weight=1, uniform="card")
+            c.bind("<Configure>", lambda _e, i=i: self._draw_card(i))
+            c.bind("<Button-1>", lambda _e, i=i: self._choose(i))
+            self.cards.append(c)
+        self._card_state = {}
+        self._progress = {}
+
+    def _draw_card(self, i):
+        c, s = self.cards[i], self.sections[i]
+        c.delete("all")
+        w = max(c.winfo_width(), 120)
+        color = PATTERN_COLORS[i % len(PATTERN_COLORS)]
+        c.create_rectangle(0, 0, 10, 110, fill=color, width=0)
+        c.create_text(22, 26, text=secciones.KEY_TEXT[i], anchor="w", fill=color,
+                      font=("TkDefaultFont", 22, "bold"))
+        c.create_text(60, 26, text=s.name, anchor="w", fill=FG, font=("TkDefaultFont", 13, "bold"), width=w - 70)
+        c.create_text(22, 62, text=f"{s.bars} compases  ·  en el tema desde el compás {s.bar}", anchor="w",
+                      fill=MUTED, font=("TkDefaultFont", 9))
+        c.create_rectangle(22, 84, w - 14, 92, fill="#3a3c44", width=0)
+        self._progress[i] = c.create_rectangle(22, 84, 22, 92, fill=color, width=0)
+        self._card_state.pop(i, None)
+
+    def _volumes(self):
+        v = self.band_vol.get() if hasattr(self, "band_vol") else 60
+        self.band_gain[0] = 0.55 * (v / 60.0) ** 1.5 if v > 0 else 0.0
+        k = self.kit_vol.get() if hasattr(self, "kit_vol") else 80
+        self.gain[0] = (k / 80.0) ** 1.5 if k > 0 else 0.0
+
+    def _choose(self, i):
+        self.seq.choose(i)
+        if not self.running:
+            self.sec0 = self._section_sec(self.sections[i])
+        self.focus_set()
+
+    def _on_press(self, event):
+        k = event.keysym.lower()
+        if k == "return":
+            self._toggle()
+        elif k in secciones.KEYS[:len(self.sections)]:
+            self._choose(secciones.KEYS.index(k))
+        return "break"
+
+    # ---- transport ----
+    def _toggle(self):
+        if self.running:
+            self._stop()
+            self.menu.net_stop()
+            return
+        if self._loading:
+            self.status.config(text="Cargando los audios de las secciones...")
+            return
+        sec0 = self._section_sec(self.sections[self.seq.first])
+        countin = self.bar_len
+        if not self.menu.net_start(sec0, countin, 1.0, f"{self.info['bpm']:g}"):
+            self.sec0, self.countin = sec0, countin
+            self._begin()
+
+    def net_begin(self, sec0, countin, speed, bpm_text):
+        self.sec0, self.countin = sec0, countin
+        self._begin()
+        return True
+
+    def _begin(self):
+        beat = self.bar_len / self.info["meter"]
+        clicks = []
+        k = 0
+        while k * beat < 3600:
+            t = self.countin + (k - self.info["meter"]) * beat
+            if t >= 0:
+                clicks.append((int(round(t * SR)), k % self.info["meter"] == 0))
+            k += 1
+        self.engine.start_clock(clicks, audible=True)
+        self.seq.start()
+        self.scheduled_upto = 0
+        self.band_ptr = bisect_left(self.band_starts, self.sec0 - 1e-6)
+        self.running = True
+        self.start_button.config(text="■ Detener  (Enter)")
+        self._schedule()
+        if self.session:
+            self.session.started(self)
+
+    def follow(self, sec0, countin, speed, bpm_text):
+        """Another window started the clock: the sections start with it (after its count-in)."""
+        self.sec0, self.countin = sec0, countin
+        self.seq.start()
+        self.scheduled_upto = 0
+        self.band_ptr = bisect_left(self.band_starts, sec0 - 1e-6)
+        self.running = True
+        self.start_button.config(text="■ Detener  (Enter)")
+
+    def release_keys(self):
+        pass
+
+    def bpm_text(self):
+        return f"{self.info['bpm']:g}"
+
+    def stop_transport(self):
+        if self.running:
+            self._stop()
+
+    def start_from_beat(self, beat):
+        self._toggle()
+
+    def _active(self):
+        return self.session is None or self.session.is_active(self)
+
+    def _stop(self):
+        self.running = False
+        self.seq.reset()
+        self.engine.stop_clock()
+        self.engine.all_off()
+        self.start_button.config(text="▶ Empezar  (Enter)")
+
+    def _bar_sample(self, bar):
+        return int(round((self.countin + bar * self.bar_len) * SR))
+
+    def _schedule(self):
+        t = self.engine.clock_seconds()
+        if t is None:
+            return
+        horizon = t + 0.3
+        events = []
+        while True:
+            if self.scheduled_upto >= len(self.seq.plan):
+                if self.countin + self.seq.end_bar() * self.bar_len >= horizon:
+                    break
+                self.seq.advance()
+            bar, i = self.seq.plan[self.scheduled_upto]
+            buf = self.sections[i].buffer
+            if buf is not None:
+                events.append((self._bar_sample(bar), "on", ("sec", self.scheduled_upto),
+                               GainVoice(BufferVoice(buf), self.gain, 0)))
+            self.scheduled_upto += 1
+        if self.band_var.get():
+            now_song = self.sec0 + (t - self.countin)
+            while self.band_ptr < len(self.band_notes) and self.band_notes[self.band_ptr][0] < now_song + 0.3:
+                on, off, pitch, ins = self.band_notes[self.band_ptr]
+                tag = ("band", self.band_ptr)
+                s_on = int(round((self.countin + on - self.sec0) * SR))
+                s_off = int(round((self.countin + off - self.sec0) * SR))
+                events += [(s_on, "on", tag, GainVoice(ins.voice(freq=freq_of(pitch)), self.band_gain, 0)),
+                           (max(s_off, s_on + 1), "off", tag, None)]
+                self.band_ptr += 1
+        if events:
+            self.engine.schedule(events)
+
+    # ---- drawing ----
+    def _tick(self):
+        if self.running:
+            if self.engine.clock_seconds() is None:
+                self._stop()
+            else:
+                if self._active():
+                    t = self.engine.clock_seconds() or 0
+                    self.engine.metro_audible = self.click_var.get() or t < self.countin
+                self._schedule()
+        if self._active():
+            self._draw()
+        if self._tick_id:
+            self.after_cancel(self._tick_id)
+        self._tick_id = self.after(33, self._tick)
+
+    def _draw(self):
+        cur, frac = None, 0.0
+        if self.running:
+            t = max(0.0, (self.engine.clock_seconds() or 0) - self.vis_delay)
+            bar = (t - self.countin) / self.bar_len
+            at = self.seq.at(bar) if bar >= 0 else None
+            if at:
+                cur, inside = at
+                frac = inside / self.sections[cur].bars
+                txt = (f"Suena: {secciones.KEY_TEXT[cur]} {self.sections[cur].name}   ·   compás "
+                       f"{int(inside) + 1} de {self.sections[cur].bars}")
+            else:
+                txt = f"Cuenta: {int(-bar * self.info['meter']) + 1}"
+        elif self._loading:
+            txt = "Cargando los audios de las secciones..."
+        else:
+            f = self.seq.first
+            txt = f"Detenido   ·   parte con: {secciones.KEY_TEXT[f]} {self.sections[f].name}"
+        q = self.seq.queued
+        if self.running and q is not None:
+            txt += f"   ·   Entra después: {secciones.KEY_TEXT[q]} {self.sections[q].name}"
+        if getattr(self, "_status_txt", None) != txt:
+            self.status.config(text=txt)
+            self._status_txt = txt
+        first = self.seq.first if not self.running else None
+        for i, c in enumerate(self.cards):
+            col = ("#3fb66b" if i == cur else "#f0c040" if (self.running and i == q) or i == first else PANEL)
+            if self._card_state.get(i) != col:
+                c.config(highlightbackground=col)
+                self._card_state[i] = col
+            item = self._progress.get(i)
+            if item:
+                w = max(c.winfo_width(), 120)
+                x1 = 22 + (w - 36) * (frac if i == cur else 0.0)
+                c.coords(item, 22, 84, x1, 92)
+
+    def back(self):
+        if self.session:
+            return self.session.close()
+        self.teardown()
+        self.chooser.back_from_play()
+
+    def teardown(self):
+        if self._tick_id:
+            self.after_cancel(self._tick_id)
+            self._tick_id = None
+        self.menu.net_remove(self)
         self._stop()
         self.engine.clear_scheduled()
         self.destroy()

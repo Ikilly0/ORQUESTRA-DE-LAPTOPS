@@ -117,6 +117,14 @@ compás lo decide `PatternSequencer` (en `drum_patterns.py`), que cuenta en comp
 comandos simples, por ejemplo `{"type": "choose", "part": "tambores", "pattern": 3}`. Eso deja listo
 coordinarlo por red con las otras laptops: basta mandar y recibir esos comandos (`listeners`).
 
+### Batería por secciones de audio
+Un tema puede traer la batería como **trozos reales de la grabación** en vez de patrones del MIDI: una carpeta
+`songs/<Tema>.secciones/` con los audios y un `secciones.json` (nombre, archivo, compás del tema donde está y
+cuántos compases dura). Si existe, la batería del tema se toca así: cada sección tiene su tecla (1…0, luego - y =),
+la que suena se repite en loop, y la que elijas **entra cuando termina la que suena**, nunca a la mitad. Suena al
+tempo de la grabación. Los audios no se suben al repo (son de la canción original): cada baterista los copia a su
+carpeta `songs/`. Detalles en `secciones.py`.
+
 ### Batería
 La pista de batería se divide en dos instrumentos: **tambores** (bombo, bombo 2, caja, toms) y
 **platillos** (hi-hat, hi-hat abierto, ride, campana del ride, crash). Para usar grabaciones reales en vez de
@@ -169,6 +177,7 @@ Ya hay entradas para *The World Looks White* y *The World Looks Red* (Ultrakill)
 | `audio.py` | Motor de audio: mezcla de voces, reloj de la canción, notas programadas al sample |
 | `song.py` | Lectura del MIDI: tempo, compás, acordes, pistas y notas |
 | `themes.py` | Ajustes de cada tema, leídos de `songs/temas.json` |
+| `secciones.py` | Batería por secciones de audio real, en loop, con cambio al terminar la sección |
 
 `profiles.json` y `settings.json` se crean al usar la app y guardan tus instrumentos y volúmenes (no se suben al repo).
 
