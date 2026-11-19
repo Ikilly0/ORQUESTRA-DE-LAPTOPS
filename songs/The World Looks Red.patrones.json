@@ -1,6 +1,6 @@
 {
  "midi": "The World Looks Red.mid",
- "midi_sha1": "f078587d14949738da016d018dfcca499cad042e",
+ "midi_sha1": "b7b37d444295166c951f9a420dcf11e48abfa858",
  "parts": {
   "tambores": {
    "patterns": [
@@ -1417,7 +1417,7 @@
     "143": 7
    },
    "shift": 0,
-   "track": 9,
+   "track": 8,
    "meter": 4,
    "first": 1,
    "last": 144,
@@ -2148,7 +2148,7 @@
     "143": 9
    },
    "shift": 0,
-   "track": 9,
+   "track": 8,
    "meter": 4,
    "first": 1,
    "last": 144,
@@ -4055,7 +4055,7 @@
     "143": 8
    },
    "shift": 0,
-   "track": 9,
+   "track": 8,
    "meter": 4,
    "first": 1,
    "last": 144,
