@@ -26,12 +26,17 @@ GAIN = 0.55  # el mismo nivel que usa "Escuchar tema completo" con los faders al
 class GainVoice:
     def __init__(self, voice, gain):
         self.voice, self.gain, self.done = voice, gain, False
+        self.bus = getattr(voice, "bus", None)  # amp channel: the gain goes after the amp (see app.GainVoice)
 
     def release(self):
         self.voice.release()
 
     def render(self, n):
-        out = self.voice.render(n) * self.gain
+        if self.bus is not None:
+            self.bus.fader = self.gain
+            out = self.voice.render(n)
+        else:
+            out = self.voice.render(n) * self.gain
         self.done = self.voice.done
         return out
 

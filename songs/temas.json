@@ -21,7 +21,8 @@
     },
     {
       "archivo": "the world looks red",
-      "nombre": "The World Looks Red - Ultrakill"
+      "nombre": "The World Looks Red - Ultrakill",
+      "sonidos": {"Electric Guitar": "guitar_amp"}
     }
   ]
 }

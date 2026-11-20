@@ -758,6 +758,115 @@ class LeadGuitar(Instrument):
         return LeadVoice(freq, Envelope(0.004, 0.05, 0.85, 0.12))
 
 
+class SampleVoice(Voice):
+    """Plays a recorded note (numpy buffer) under an envelope; ends with the buffer or the release."""
+
+    def __init__(self, buf, env):
+        super().__init__(0.0, env)
+        self.buf = buf
+        self.pos = 0
+
+    def oscillate(self, n):
+        chunk = self.buf[self.pos:self.pos + n]
+        self.pos += n
+        if len(chunk) < n:
+            self.done = True
+            chunk = np.concatenate((chunk, np.zeros(n - len(chunk))))
+        return chunk
+
+    def render(self, n):
+        out = super().render(n)
+        if self.pos >= len(self.buf):
+            self.done = True
+        return out
+
+
+def _amp_guitar_dir():
+    """samples/guitarra_amp next to the program (or the code), else the copy bundled inside a build
+    (macOS keeps its files in Application Support, where samples/ is not copied)."""
+    import sys
+    here = os.path.join(SAMPLES_DIR, "guitarra_amp")
+    bundled = os.path.join(getattr(sys, "_MEIPASS", ""), "samples", "guitarra_amp")
+    return here if os.path.isfile(os.path.join(here, "notas.json")) or not os.path.isdir(bundled) else bundled
+
+
+AMP_GUITAR_DIR = _amp_guitar_dir()
+
+
+class AmpGuitar(Instrument):
+    """Recorded guitar notes into a real amp capture, live. The files live in samples/guitarra_amp/ (made by
+    herramientas-audio/onlinesequencer/exportar_a_app.py); without them it plays the synthesised
+    distorted guitar."""
+    id = "guitar_amp"
+    name = "Amp guitar (6505+)"
+    description = "Sampled guitar through a 6505+ amp capture (NAM) and cabinet, on the instrument's channel."
+    color = "#b8322a"
+    techniques = ("palm_mute", "power")
+    info = {
+        "Family": "Chordophone, electric (sampled)",
+        "Notes": "Online Sequencer electric guitar, played an octave down (like its detune -1200)",
+        "Amp": "Neural Amp Modeler capture of a 6505+ red channel with an MXR boost, run in numpy",
+        "Channel": "All notes go through one amp, so each note's tail and the next attack distort together",
+        "Cabinet": "EQ matched to the guitar of The World Looks Red, as a zero-latency impulse response",
+        "Files": "samples/guitarra_amp/ (local; without them it uses the synthesised distorted guitar)",
+    }
+
+    def __init__(self):
+        self._loaded = None  # None = not tried yet, False = files missing
+        self.bus = None
+
+    def _load(self):
+        if self._loaded is not None:
+            return self._loaded
+        self._loaded = False
+        try:
+            import json
+            from amp import AmpBus, Cabinet, NamAmp, read_wav_mono
+            with open(os.path.join(AMP_GUITAR_DIR, "notas.json"), encoding="utf-8") as f:
+                meta = json.load(f)
+            notes, sr = read_wav_mono(os.path.join(AMP_GUITAR_DIR, "notas.wav"))
+            ir, sr2 = read_wav_mono(os.path.join(AMP_GUITAR_DIR, "gabinete.wav"))
+            if sr != SR or sr2 != SR:
+                raise ValueError(f"expected {SR} Hz files")
+            notes = notes * float(meta["escala_notas"])
+            self.first = int(meta["primera_midi"])
+            self.notes = [notes[a:b] for a, b in zip(meta["inicios"], meta["fines"])]
+            amp = NamAmp(os.path.join(AMP_GUITAR_DIR, "amp.nam"))
+            cab = Cabinet(ir * float(meta.get("escala_gabinete", 1.0)), 512)
+            self.bus = AmpBus(amp, cab, float(meta["ganancia_entrada"]), float(meta.get("ganancia_salida", 1.0)), SR)
+            self._loaded = True
+            print("amp guitar: loaded", AMP_GUITAR_DIR, flush=True)
+        except FileNotFoundError:
+            print("amp guitar: no files in samples/guitarra_amp, using the synthesised guitar", flush=True)
+        except Exception as exc:
+            print(f"amp guitar: could not load ({exc}), using the synthesised guitar", flush=True)
+        return self._loaded
+
+    def _note(self, midi):
+        i = midi - self.first
+        while i < 0:
+            i += 12
+        while i >= len(self.notes):
+            i -= 12
+        return self.notes[i]
+
+    def voice(self, freq, palm_mute=False, power=False, **_):
+        if not self._load():
+            return _SYNTH_GUITAR.voice(freq, palm_mute=palm_mute, power=power)
+        midi = int(round(69 + 12 * np.log2(freq / 440.0)))
+        bufs = [self._note(m) for m in ([midi, midi + 7, midi + 12] if power else [midi])]
+        buf = np.zeros(max(len(b) for b in bufs))
+        for b in bufs:
+            buf[:len(b)] += b
+        if palm_mute:  # short and quieter: the hand damps the strings
+            env = Envelope(0.001, 0.12, 0.15, 0.03)
+        else:          # rings while held, 10 ms fade on release (Online Sequencer's fadeTime)
+            env = Envelope(0.001, 0.01, 1.0, 0.01)
+        v = SampleVoice(buf, env)
+        v.bus = self.bus
+        return v
+
+
 class Vocal(Instrument):
     id = "vocal"
     name = "Voice (ah)"
@@ -1018,6 +1127,8 @@ GM_NAMES = [
 
 
 # Order here = order in the UI.
-INSTRUMENTS = [Piano(), CleanGuitar(), LeadGuitar(), Vocal(), DistortedGuitar(), BassGuitar(), DrumKit(),
+_SYNTH_GUITAR = DistortedGuitar()  # AmpGuitar falls back to it when its files are missing
+
+INSTRUMENTS = [Piano(), CleanGuitar(), LeadGuitar(), Vocal(), DistortedGuitar(), AmpGuitar(), BassGuitar(), DrumKit(),
                Strings(), StringEnsemble(), TremoloStrings(), Brass(), Flute(),
                Pad(), Organ(), PluckedString(), ElectricPiano(), Clarinet()]

@@ -28,6 +28,7 @@ class DelayedVoice:
         self.voice = voice
         self.delay = delay
         self.done = False
+        self.bus = getattr(voice, "bus", None)  # instrument channel (amp), see Engine.mix
 
     def release(self):
         self.voice.release()
@@ -50,6 +51,7 @@ class SequenceVoice:
 
     def __init__(self, notes):
         self.notes = sorted(notes, key=lambda n: n[0])
+        self.bus = getattr(self.notes[0][2], "bus", None) if self.notes else None
         self.t = 0
         self.active = []  # [(end_sample, voice)]
         self.next = 0
@@ -116,6 +118,8 @@ class Engine:
         self.click_lo = _click(1000)
         # recording (list of mono blocks while recording, else None)
         self.rec_blocks = None
+        # instrument channels: voices with a .bus (e.g. the amp guitar) are summed and processed together
+        self.buses = {}  # id(bus) -> bus; kept so a channel rings out after its last note
 
     # ---- stream ---------------------------------------------------------
     def _candidates(self):
@@ -355,8 +359,21 @@ class Engine:
             self.voices += self._schedule_clicks(frames) + self._clock_clicks(frames)
             active = list(self.voices)
         out = np.zeros(frames)
+        bus_in = {}
         for _, v in active:
-            out += v.render(frames)
+            bus = getattr(v, "bus", None)
+            if bus is None:
+                out += v.render(frames)
+            else:
+                self.buses.setdefault(id(bus), bus)
+                if id(bus) in bus_in:
+                    bus_in[id(bus)] += v.render(frames)
+                else:
+                    bus_in[id(bus)] = v.render(frames)
+        for key, bus in list(self.buses.items()):
+            y = bus.process(bus_in.get(key, np.zeros(frames)))
+            if y is not None:
+                out += y
         with self.lock:
             self.voices = [(t, v) for t, v in self.voices if not v.done]
         return np.tanh(out * self.volume)  # soft clip keeps chords safe

@@ -8,7 +8,8 @@ what can't be guessed from the MIDI. Each entry:
       "nombre": "Order - Ultrakill",            # name in the list of themes
       "juntar": [{"nombre": "Guitarra 2 + solista", "pistas": ["Guitar Etc", "Lead Guitar"]}],
       "teclas": {"Cello": "numeros"},           # instrument -> its own row ("numeros" = ` 1 .. 0 - =)
-      "bajadas": ["Guitarra 2 + solista"]       # instruments that play their fast runs with Shift + Espacio
+      "bajadas": ["Guitarra 2 + solista"],      # instruments that play their fast runs with Shift + Espacio
+      "sonidos": {"Electric Guitar": "guitar_amp"}  # track -> sound id, instead of the one guessed from GM
     }
 
 Only "archivo" is needed. Pistas are the track names of the MIDI (or their numbers). When several entries
@@ -121,6 +122,18 @@ def merges(path):
 def row_keys(path):
     """{instrument name: row name}: instruments that play on a row of their own."""
     return dict(entry_for(path).get("teclas", {}))
+
+
+def sounds(path):
+    """{track index: sound id}: tracks that use another sound than the one guessed from their GM instrument."""
+    out = {}
+    for ref, sound in entry_for(path).get("sonidos", {}).items():
+        idx = _track_index(path, ref)
+        if idx is None:
+            print(f"{CONFIG_NAME}: no encontré la pista {ref!r} de \"sonidos\" en {os.path.basename(path)}", flush=True)
+        else:
+            out[idx] = str(sound)
+    return out
 
 
 def run_instruments(path):

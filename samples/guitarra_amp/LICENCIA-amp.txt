@@ -1,0 +1,20 @@
+Guitarra con amplificador (instrumento "Amp guitar (6505+)" de la app)
+
+Que hay en esta carpeta y de donde viene:
+
+- notas.wav, notas.json
+  Notas de guitarra sintetizadas por este proyecto (sinusoides + ruido filtrado) a partir de
+  mediciones de armonicos. No contienen audio de terceros. Las genera
+  herramientas-audio/onlinesequencer/resintetizar.py. Mismas condiciones que el resto del proyecto.
+
+- gabinete.wav
+  Respuesta al impulso del gabinete, calculada por este proyecto (EQ ajustada a la guitarra de la
+  grabacion de The World Looks Red, en fase minima). La genera
+  herramientas-audio/onlinesequencer/exportar_a_app.py. Mismas condiciones que el resto del proyecto.
+
+- amp.nam
+  Captura de Neural Amp Modeler "Helga B 6505+ Red ch - MXR Drive", hecha por Helga B para la
+  coleccion comunitaria NAM_models (modelos para Neural Amp Modeler de Steve Atkinson,
+  https://github.com/sdatkinson/neural-amp-modeler). Se usa sin cambios.
+  Licencia: GNU General Public License version 3 (texto completo en GPL-3.0.txt, en esta carpeta).
+  La app la ejecuta con amp.py (implementacion propia en numpy de la arquitectura WaveNet de NAM).

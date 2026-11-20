@@ -139,6 +139,8 @@ def sanitize(profile):
         out["part"] = profile["part"]
     if profile.get("all_notes"):
         out["all_notes"] = True
+    if profile.get("sonido_tema"):  # temas.json "sonidos" already applied (app._theme_sounds)
+        out["sonido_tema"] = str(profile["sonido_tema"])
     return out
 
 
@@ -198,8 +200,11 @@ def theme_profiles(path):
         st = note_stats(path, t["index"])
         pad = _notes_for(st, t["low"], t["high"], 8) if len(st["pitches"]) < 8 else ()
         top = all_notes(st["pitches"], pad)  # every note the track plays gets its own key
-        out.append({"name": name, "sound": sound_for_program(t["program"]), "theme": key, "track": t["index"],
+        sound = themes.sounds(path).get(t["index"], sound_for_program(t["program"]))
+        out.append({"name": name, "sound": sound, "theme": key, "track": t["index"],
                     "all_notes": True, "slots": note_slots(top)})
+        if t["index"] in themes.sounds(path):
+            out[-1]["sonido_tema"] = sound
         apply_theme_keys(path, out[-1])
     return _apply_merges(path, out, home_top)
 

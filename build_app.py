@@ -27,6 +27,7 @@ def main():
     args = [
         "app.py", "--name", NAME, "--noconfirm", "--clean", "--windowed",
         "--add-data", f"songs{sep}songs",
+        "--add-data", f"samples/guitarra_amp{sep}samples/guitarra_amp",  # amp guitar (also for macOS)
         "--copy-metadata", "mido",
         "--hidden-import", "mido.backends",
         "--collect-data", "sounddevice",   # the PortAudio library that ships with sounddevice

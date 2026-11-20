@@ -347,6 +347,7 @@ class MainMenu(tk.Tk):
         self._complete_theme_notes()
         self._strip_run_notes()
         self._theme_keys()
+        self._theme_sounds()
         self.profiles = self._visible()
         self.show_menu()
 
@@ -413,6 +414,24 @@ class MainMenu(tk.Tk):
                     changed |= strip_run_notes(self.theme_path, p)
                 except Exception as exc:
                     print("bajadas:", exc, flush=True)
+        if changed:
+            save_profiles(PROFILES_FILE, self.all_profiles)
+
+    def _theme_sounds(self):
+        """temas.json "sonidos": a track's sound chosen for the theme. Applied once per instrument (remembered
+        in "sonido_tema"), so if you change the sound afterwards in Configurar instrumentos it stays yours."""
+        if not self.theme_path or not self.theme_key:
+            return
+        wanted = themes.sounds(self.theme_path)
+        changed = False
+        for p in self.all_profiles:
+            if p.get("theme") != self.theme_key or "part" in p:
+                continue
+            sound = wanted.get(p.get("track"))
+            if sound and p.get("sonido_tema") != sound and any(i.id == sound for i in INSTRUMENTS):
+                p["sound"] = sound
+                p["sonido_tema"] = sound
+                changed = True
         if changed:
             save_profiles(PROFILES_FILE, self.all_profiles)
 
@@ -3045,12 +3064,19 @@ class GainVoice:
         self.gains = gains
         self.idx = idx
         self.done = False
+        # a voice on an instrument channel (amp): the fader acts after the amp, like a real mixer,
+        # so moving it changes the volume and not how much the amp distorts
+        self.bus = getattr(voice, "bus", None)
 
     def release(self):
         self.voice.release()
 
     def render(self, n):
-        out = self.voice.render(n) * self.gains[self.idx]
+        if self.bus is not None:
+            self.bus.fader = self.gains[self.idx]
+            out = self.voice.render(n)
+        else:
+            out = self.voice.render(n) * self.gains[self.idx]
         self.done = self.voice.done
         return out
 
