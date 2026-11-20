@@ -16,13 +16,9 @@
       "nombre": "Freesia - Guilty Gear"
     },
     {
-      "archivo": "the world looks white",
-      "nombre": "The World Looks White - Ultrakill"
-    },
-    {
-      "archivo": "the world looks red",
-      "nombre": "The World Looks Red - Ultrakill",
-      "sonidos": {"Electric Guitar": "guitar_amp", "Cello": "cello_continuo"}
+      "archivo": "the world looks white - the world looks red",
+      "nombre": "The World Looks White / The World Looks Red - Ultrakill",
+      "sonidos": {"Electric Guitar": "guitar_amp", "Cello": "cello_continuo", "Menacing Hum": "menacing_hum"}
     }
   ]
 }

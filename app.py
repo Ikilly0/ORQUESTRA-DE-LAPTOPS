@@ -342,6 +342,7 @@ class MainMenu(tk.Tk):
             except Exception as exc:
                 print("theme instruments:", exc, flush=True)
         self._remember_tracks()
+        self._add_new_tracks()
         self._split_theme_drums()
         self._merge_theme_tracks()
         self._complete_theme_notes()
@@ -350,6 +351,33 @@ class MainMenu(tk.Tk):
         self._theme_sounds()
         self.profiles = self._visible()
         self.show_menu()
+
+    def _add_new_tracks(self):
+        """A theme whose MIDI gained tracks (e.g. the Menacing Hum of The World Looks White / Red): each new
+        track gets its instrument once; the instruments you already have stay as they are."""
+        if not self.theme_path or not self.theme_key:
+            return
+        used = set()
+        for p in self.all_profiles:
+            if p.get("theme") == self.theme_key:
+                used.add(p.get("track"))
+                used.update(p.get("extra_tracks", []))
+        if not used:
+            return
+        try:
+            gen = theme_profiles(self.theme_path)
+        except Exception as exc:
+            print("theme instruments:", exc, flush=True)
+            return
+        new = [q for q in gen if q.get("track") not in used and not used & set(q.get("extra_tracks", []))]
+        if not new:
+            return
+        taken = {p["name"] for p in self.all_profiles if not p.get("theme") or p.get("theme") == self.theme_key}
+        for p in new:
+            if p["name"] in taken:
+                p["name"] += f" ({self.theme_name.split(' - ')[0]})"
+        self.all_profiles += new
+        save_profiles(PROFILES_FILE, self.all_profiles)
 
     def _split_theme_drums(self):
         """Older theme drum kits (one instrument with every piece) become two: tambores + platillos."""
@@ -1607,7 +1635,7 @@ class PlayChooser(tk.Toplevel):
         if self._uses_patterns(p):
             PatternWindow(self, self.engine, p, bpm=bpm, mode=self.mode_var.get())
             return
-        win = ContinuousPlayWindow if instrument_by_id(p["sound"]).kind == "continuous" else PlayWindow
+        win = PLAY_WINDOWS.get(instrument_by_id(p["sound"]).kind, PlayWindow)
         win(self, self.engine, p, song=self.song, track=self._selected_track() if self.song else None,
             auto=auto, bpm=bpm, band=self.mode_var.get() == "band")
 
@@ -1634,7 +1662,7 @@ class PlayChooser(tk.Toplevel):
                               plays_band=p is leader)
             else:
                 track = self._profile_track(p) if self.song is not None else None
-                win = ContinuousPlayWindow if instrument_by_id(p["sound"]).kind == "continuous" else PlayWindow
+                win = PLAY_WINDOWS.get(instrument_by_id(p["sound"]).kind, PlayWindow)
                 win(self, self.engine, p, song=self.song, track=track, auto=mode == "auto", bpm=bpm,
                            band=p is leader, session=session,
                            label="Práctica con banda" if mode == "band" else None)
@@ -3329,6 +3357,166 @@ class ContinuousPlayWindow(PlayWindow):
             self.gvoice.close()
             self.engine.note_off(self.gtag)
         super().teardown()
+
+
+class DroneWindow(ContinuousPlayWindow):
+    """Menacing Hum: a drone that sounds as long as the window is open. The rows are notes (higher = higher);
+    a click (or arrows up/down) picks the note at once, and the knob on the right (mouse wheel, + / -, or the
+    number keys 1..9, 0 = full) sets the volume, from silence to the song's loudest. Same theme, shared clock and
+    room as any other instrument: the part's notes still come from the right."""
+
+    LOW, HIGH = 21, 48     # rows when the part has no notes: A0 .. C3
+    STEP = 0.05            # one wheel notch / + / -
+
+    def __init__(self, *args, **kwargs):
+        self.level_var = None
+        super().__init__(*args, **kwargs)
+        self.note = self.rows[self._default_row()]
+        self.gvoice.set_note(self.note)
+        self._set_level(0.0)
+
+    @property
+    def rows(self):
+        if getattr(self, "_rows", None) is None:
+            evs = getattr(self, "src_auto", None) or self.auto_events
+            notes = sorted({p for _on, _off, p in evs})
+            lo, hi = (min(notes) - 7, max(notes) + 24) if notes else (self.LOW, self.HIGH)
+            self._rows = list(range(max(12, lo), min(84, hi) + 1))
+        return self._rows
+
+    def _default_row(self):
+        evs = getattr(self, "src_auto", None) or self.auto_events
+        first = min(evs)[2] if evs else 24
+        return self.rows.index(first) if first in self.rows else 0
+
+    # ---- layout: the rows, and the knob on the right ----------------------------------------------------
+    def _build_tech_row(self, parent):
+        """No octave / add-key buttons: just how to play it (and the band's volume in Práctica con banda)."""
+        tech = ttk.Frame(parent)
+        tech.pack(fill="x", pady=(6, 0))
+        self.palm_label = self.oct_label = None
+        ttk.Label(tech, text="Nota: clic en una fila (o ↑ / ↓)      Volumen: perilla de la derecha, rueda del "
+                             "mouse, + / −, teclas 1 … 9 (0 = 100 %)", style="BgMuted.TLabel").pack(side="left")
+        self.edit_label = ttk.Label(tech, text="", style="BgMuted.TLabel")
+        if self.band:
+            bf = ttk.Frame(tech)
+            bf.pack(side="right")
+            ttk.Label(bf, text="Volumen banda", style="BgMuted.TLabel").pack(side="left")
+            self.band_vol = tk.IntVar(value=60)
+            ttk.Scale(bf, from_=0, to=100, orient="horizontal", length=160, variable=self.band_vol,
+                      command=lambda _v: self._band_volume()).pack(side="left", padx=6)
+            self._band_volume()
+
+    def _build_highway(self, parent):
+        self.lanes = {}
+        box = ttk.Frame(parent, style="Panel.TFrame", padding=6)
+        box.pack(fill="both", expand=True, pady=(8, 8))
+        knob = ttk.Frame(box, style="Panel.TFrame", padding=(10, 0, 4, 0))
+        knob.pack(side="right", fill="y")
+        ttk.Label(knob, text="Volumen", style="Panel.TLabel").pack(side="top")
+        self.level_var = tk.DoubleVar(value=0.0)
+        self.level_txt = ttk.Label(knob, text="0 %", style="Panel.TLabel", font=("TkDefaultFont", 18, "bold"))
+        self.level_txt.pack(side="bottom", pady=(6, 0))
+        sc = ttk.Scale(knob, from_=1.0, to=0.0, orient="vertical", variable=self.level_var, takefocus=False,
+                       command=lambda v: self._set_level(float(v)))
+        sc.pack(side="top", fill="y", expand=True, pady=6)
+        sc.bind("<ButtonRelease-1>", self._refocus)
+        self.highway = tk.Canvas(box, width=self.HW_W, height=self.HW_H, bg="#16171b", highlightthickness=0)
+        self.highway.pack(side="left", fill="both", expand=True)
+        self.highway.bind("<ButtonPress-1>", self._pick)
+        self.highway.bind("<B1-Motion>", self._pick)
+        for w in (self, self.highway):
+            w.bind("<MouseWheel>", self._wheel)
+            w.bind("<Button-4>", lambda e: self._nudge(+self.STEP))
+            w.bind("<Button-5>", lambda e: self._nudge(-self.STEP))
+        self.max_dur = max((off - on for on, off, _ in self.auto_events), default=1.0)
+
+    def _hw_build_static(self, w, h):
+        super()._hw_build_static(w, h)
+        self._place_dot()
+
+    # ---- note -----------------------------------------------------------------------------------------
+    def _pick(self, event):
+        h = max(self.highway.winfo_height(), 200)
+        r = (h - event.y) / self._row_h() - 0.5
+        self._set_note(self.rows[int(min(max(round(r), 0), len(self.rows) - 1))])
+
+    def _set_note(self, m):
+        self.note = m
+        if self.gvoice is not None:
+            self.gvoice.set_note(m)
+        self._place_dot()
+
+    def _place_dot(self):
+        if not hasattr(self, "_dot") or self.note not in self.rows:
+            return
+        y = self._y_of_row(self.rows.index(self.note))
+        x_hit, r = max(self.highway.winfo_width(), 200) * self.X_HIT, 13
+        self.dot_y = y
+        self.highway.coords(self._dot, x_hit - r, y - r, x_hit + r, y + r)
+        self.highway.itemconfig(self._pitch_txt, text=note_text(self.note))
+
+    # ---- volume --------------------------------------------------------------------------------------
+    def _set_level(self, x):
+        x = min(max(float(x), 0.0), 1.0)
+        if self.level_var is not None and abs(self.level_var.get() - x) > 1e-6:
+            self.level_var.set(x)
+        if getattr(self, "level_txt", None) is not None:
+            self.level_txt.configure(text=f"{int(round(x * 100))} %")
+        if self.gvoice is not None:
+            self.gvoice.set_level(x)
+        self._keep_voice()
+
+    def _nudge(self, d):
+        self._set_level((self.level_var.get() if self.level_var else 0.0) + d)
+
+    def _wheel(self, event):
+        self._nudge(self.STEP if event.delta > 0 else -self.STEP)
+        return "break"
+
+    def _keep_voice(self):
+        v = self.gvoice
+        if v is None:
+            return
+        if v.done or not any(x is v for _, x in self.engine.voices):
+            self.gvoice = v = self.ins.voice(midi=self.note if hasattr(self, "note") else 24)
+            self.engine.voice_on(self.gtag, v)
+        x = self.level_var.get() if self.level_var is not None else 0.0
+        if v.level_target != x:
+            v.set_level(x)
+        if hasattr(self, "_dot"):
+            self.highway.itemconfig(self._dot, fill=self.ins.color if x > 0 else "")
+
+    # ---- keys -----------------------------------------------------------------------------------------
+    def _on_press(self, event):
+        if isinstance(event.widget, (tk.Entry, ttk.Entry)):
+            return
+        k = event.keysym.lower()
+        if k in ("up", "down") and self.note in self.rows:
+            i = self.rows.index(self.note) + (1 if k == "up" else -1)
+            self._set_note(self.rows[min(max(i, 0), len(self.rows) - 1)])
+            return "break"
+        if k in ("plus", "kp_add", "equal"):
+            self._nudge(+self.STEP)
+            return "break"
+        if k in ("minus", "kp_subtract"):
+            self._nudge(-self.STEP)
+            return "break"
+        if len(k) == 1 and k.isdigit() and not (event.state & 0x4):
+            self._set_level(1.0 if k == "0" else int(k) / 10)
+            return "break"
+        if k == "space" and not (event.state & 0x4):
+            return "break"
+        return super()._on_press(event)
+
+    def _toggle_bow(self):
+        pass
+
+    def _release_all(self):
+        PlayWindow._release_all(self)   # the hum keeps sounding: only the knob silences it
+
+
+PLAY_WINDOWS = {"continuous": ContinuousPlayWindow, "drone": DroneWindow}
 
 
 class ListenWindow(tk.Toplevel):

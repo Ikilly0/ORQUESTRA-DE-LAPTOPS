@@ -2,78 +2,78 @@
  "bpm": 90,
  "compas_tiempos": 4,
  "desfase_audio": 0.0,
- "nota": "Audio de la batería separada de la grabación original. compas = compás del MIDI del tema donde está la sección.",
+ "nota": "Audio de la batería separada de la grabación original de The World Looks Red. compas = compás del MIDI del tema donde está la sección (los primeros 60 compases son The World Looks White).",
  "secciones": [
   {
    "nombre": "Intro",
    "archivo": "01 Intro.wav",
-   "compas": 1,
+   "compas": 61,
    "compases": 8
   },
   {
    "nombre": "Ritmo fuerte",
    "archivo": "02 Ritmo fuerte.wav",
-   "compas": 9,
+   "compas": 69,
    "compases": 8
   },
   {
    "nombre": "Ritmo suave",
    "archivo": "03 Ritmo suave.wav",
-   "compas": 17,
+   "compas": 77,
    "compases": 8
   },
   {
    "nombre": "Ritmo medio",
    "archivo": "04 Ritmo medio.wav",
-   "compas": 25,
+   "compas": 85,
    "compases": 8
   },
   {
    "nombre": "Ritmo fuerte 2",
    "archivo": "05 Ritmo fuerte 2.wav",
-   "compas": 33,
+   "compas": 93,
    "compases": 8
   },
   {
    "nombre": "Transición",
    "archivo": "06 Transición.wav",
-   "compas": 41,
+   "compas": 101,
    "compases": 8
   },
   {
    "nombre": "B, primera parte",
    "archivo": "07 B, primera parte.wav",
-   "compas": 49,
+   "compas": 109,
    "compases": 8
   },
   {
    "nombre": "B, segunda parte",
    "archivo": "08 B, segunda parte.wav",
-   "compas": 57,
+   "compas": 117,
    "compases": 8
   },
   {
    "nombre": "B final, primera parte",
    "archivo": "09 B final, primera parte.wav",
-   "compas": 129,
+   "compas": 189,
    "compases": 8
   },
   {
    "nombre": "B final, segunda parte",
    "archivo": "10 B final, segunda parte.wav",
-   "compas": 137,
+   "compas": 197,
    "compases": 8
   },
   {
    "nombre": "Cierre",
    "archivo": "11 Cierre.wav",
-   "compas": 65,
+   "compas": 125,
    "compases": 8
   },
   {
    "nombre": "Puente (sin batería)",
    "archivo": "12 Puente sin bateria.wav",
-   "compas": 115,
+   "compas": 175,
    "compases": 8
   }
  ]

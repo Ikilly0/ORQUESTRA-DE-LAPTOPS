@@ -171,7 +171,7 @@ agudo), así sus frases no saltan de la L a la Q y las notas no se cortan. Se co
 - `teclas`: instrumento → fila propia (`numeros`, `superior`, `central` o `inferior`).
 - `bajadas`: instrumentos que tocan sus bajadas cromáticas rápidas con Shift + Espacio.
 
-Ya hay entradas para *The World Looks White* y *The World Looks Red* (Ultrakill): basta copiar sus MIDI.
+*The World Looks White / The World Looks Red* (Ultrakill) es una sola pieza: los primeros 60 compases (2:40) son The World Looks White, casi libre, con el **Menacing Hum** (zumbido: eliges la nota y subes la intensidad con la perilla); después sigue The World Looks Red.
 
 ## Archivos
 

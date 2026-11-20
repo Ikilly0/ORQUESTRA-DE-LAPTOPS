@@ -1368,8 +1368,124 @@ class ContinuousCello(Instrument):
         return GlissVoice(self, midi, live=True)  # the dot window drives pitch and bow itself
 
 
+# ---- Menacing Hum: the dark rising hum of The World Looks White ----------------------------------------
+def _hum_dir():
+    """samples/menacing_hum next to the program (or the code), else the copy bundled inside a build."""
+    import sys
+    here = os.path.join(SAMPLES_DIR, "menacing_hum")
+    bundled = os.path.join(getattr(sys, "_MEIPASS", ""), "samples", "menacing_hum")
+    return here if os.path.isfile(os.path.join(here, "parametros.npz")) or not os.path.isdir(bundled) else bundled
+
+
+class HumVoice:
+    """One held note that never stops while its window is open; the player picks the note and turns the volume
+    like a knob. The sound IS the file Alvaro chose, "Separado - ZUMBIDO GRAVE solo (de la cancion)": the low
+    hum of The World Looks White as it is in the song (samples/menacing_hum/parametros.npz "full", made by
+    herramientas-audio/menacing_hum/zumbido_archivo.py), in C1. Turned on from silence it plays the file from
+    its start (it rises like in the song); at the end of its loudest part it keeps repeating that last stretch.
+    Other notes play it faster or slower (like a sampler); picking another note changes it at once (no
+    glissando). Live control: set_note(midi) and set_level(0..1)."""
+
+    SMOOTH = 0.05       # s, the knob is smoothed just enough not to click
+
+    def __init__(self, inst, midi, level=0.0, live=True):
+        self.inst = inst
+        self.pitch = float(midi)
+        self.level_target = self.level = float(level)
+        self.live = self.persistent = live
+        self.closed = self.done = False
+        self.pos = 0.0                                  # where in the loop (samples of the recording)
+
+    @property
+    def target(self):
+        return self.pitch
+
+    def set_note(self, midi):
+        self.pitch = float(midi)
+
+    def set_level(self, x):
+        self.level_target = float(min(max(x, 0.0), 1.0))
+
+    def release(self):   # "all off" from the app: a live hum keeps sounding, a theme note ends
+        if not self.live:
+            self.level_target = 0.0
+            self.closed = True
+
+    def close(self):     # the window is closing: fade out and end
+        self.live = self.persistent = False
+        self.release()
+
+    def render(self, n):
+        t = np.arange(1, n + 1) / SR
+        lv = self.level_target + (self.level - self.level_target) * np.exp(-t / self.SMOOTH)
+        self.level = float(lv[-1])
+        if self.level < 1e-4 and self.level_target == 0.0:
+            if self.closed:
+                self.done = True
+            self.pos = 0.0                              # next time it starts the file from the beginning
+            return np.zeros(n)
+        full, a = self.inst.full, self.inst.loop_from
+        L = len(full)
+        speed = 2 ** ((self.pitch - self.inst.loop_midi) / 12)
+        pos = self.pos + speed * np.arange(n + 1)       # from the next unplayed sample on
+        over = pos >= L - 1                             # past the end: back into the repeated stretch
+        pos[over] = a + (pos[over] - a) % (L - 1 - a)
+        self.pos = float(pos[-1])
+        pos = pos[:-1]
+        j = pos.astype(int)
+        u = pos - j
+        out = full[j] * (1 - u) + full[np.minimum(j + 1, L - 1)] * u
+        return out * lv * lv * self.inst.level         # volume: knob squared (50 % = -12 dB)
+
+
+class MenacingHum(Instrument):
+    """A sustained drone (DroneWindow in app.py): pick a note, turn the volume like a knob."""
+    id = "menacing_hum"
+    name = "Menacing Hum"
+    kind = "drone"
+    description = "The dark hum of The World Looks White: pick the note, turn the volume. Never stops while open."
+    color = "#9b2335"
+    info = {
+        "Family": "Drone (a recording from the song)",
+        "Playing": "Click a note (or arrows up/down); the knob, the mouse wheel, + / - or the number keys set "
+                   "the volume",
+        "Sound": "The low hum of The World Looks White as it is in the song (C1): from silence it plays from "
+                 "the start and rises; then its loudest stretch repeats. Other notes play it faster or slower",
+        "Volume": "The knob: 0 is silence",
+    }
+    level = 1.0
+
+    def __init__(self):
+        self.loaded = False
+
+    def _load(self):
+        if self.loaded:
+            return
+        self.loaded = True
+        try:
+            d = np.load(os.path.join(_hum_dir(), "parametros.npz"))
+            self.full = d["full"].astype(np.float32)             # the chosen file: the song's low hum (C1)
+            self.loop_from = int(d["loop_from"])                 # where it goes back to after the end
+            self.loop_midi = float(round(12 + 12 * np.log2(float(d["loop_f0"]) / 16.3516)))   # C1: plays at its own speed
+            self.level = float(d["level_loop"]) if "level_loop" in d else 1.0
+            print("menacing hum: loaded the hum of the song", flush=True)
+        except Exception as exc:  # no file: a plain dark drone so the app still works
+            print(f"menacing hum: no recording ({exc})", flush=True)
+            t = np.arange(SR) / SR
+            self.full = (0.3 * np.sin(2 * np.pi * 33 * t) + 0.2 * np.sin(2 * np.pi * 66 * t)).astype(np.float32)
+            self.loop_from = 0
+            self.loop_midi = 24.0
+            self.level = 1.0
+
+    def voice(self, freq=None, midi=24.0, level=0.0, **_):
+        self._load()
+        if freq is not None:  # a note from the theme (band / automatic): full volume until released
+            return HumVoice(self, 69 + 12 * np.log2(freq / 440.0), level=1.0, live=False)
+        return HumVoice(self, midi, level=level)   # the drone window drives note and volume itself
+
+
 _SYNTH_GUITAR = DistortedGuitar()  # AmpGuitar falls back to it when its files are missing
 
 INSTRUMENTS = [Piano(), CleanGuitar(), LeadGuitar(), Vocal(), DistortedGuitar(), AmpGuitar(), BassGuitar(), DrumKit(),
                Strings(), StringEnsemble(), TremoloStrings(), Brass(), Flute(),
-               Pad(), Organ(), PluckedString(), ElectricPiano(), Clarinet(), ContinuousCello()]
+               Pad(), Organ(), PluckedString(), ElectricPiano(), Clarinet(), ContinuousCello(), MenacingHum()]
