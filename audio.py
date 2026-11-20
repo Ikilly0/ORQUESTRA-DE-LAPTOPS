@@ -85,6 +85,14 @@ class SequenceVoice:
         return out
 
 
+def _trim(voices):
+    """Too many voices: drop the oldest, but never a persistent one (the dot window's continuous cello)."""
+    keep = [tv for tv in voices if getattr(tv[1], "persistent", False)]
+    rest = [tv for tv in voices if not getattr(tv[1], "persistent", False)]
+    rest = rest[-max(0, MAX_VOICES - len(keep)):] if MAX_VOICES > len(keep) else []
+    return keep + rest
+
+
 def _click(freq):
     t = np.arange(int(0.03 * SR)) / SR
     return np.sin(2 * np.pi * freq * t) * np.exp(-t / 0.006)
@@ -189,7 +197,7 @@ class Engine:
             self.voices = [(None if t == tag else t, v) for t, v in self.voices]
             self.voices.append((tag, voice))
             if len(self.voices) > MAX_VOICES:
-                self.voices = self.voices[-MAX_VOICES:]
+                self.voices = _trim(self.voices)
 
     def note_off(self, tag):
         with self.lock:
@@ -288,7 +296,7 @@ class Engine:
                         v.release()
                 self.voices = [(None if t == tag else t, v) for t, v in self.voices]
         if len(self.voices) > MAX_VOICES:
-            self.voices = self.voices[-MAX_VOICES:]
+            self.voices = _trim(self.voices)
 
     def output_delay(self):
         """Seconds between a sample entering the stream and coming out of the speaker (buffer + device)."""

@@ -1127,8 +1127,249 @@ GM_NAMES = [
 
 
 # Order here = order in the UI.
+def _cello_dir():
+    """samples/cello next to the program (or the code), else the copy bundled inside a build (macOS)."""
+    import sys
+    here = os.path.join(SAMPLES_DIR, "cello")
+    bundled = os.path.join(getattr(sys, "_MEIPASS", ""), "samples", "cello")
+    return here if os.path.isfile(os.path.join(here, "parametros.npz")) or not os.path.isdir(bundled) else bundled
+
+
+CELLO_DIR = _cello_dir()
+
+
+class _CelloLine:
+    """The cello made live from the measurements in samples/cello/parametros.npz: one sine per harmonic whose
+    phase never restarts, with the level of every harmonic and the vibrato taken from the measured notes
+    (blended between the two nearest notes for any pitch), plus the measured bow noise. There is no stored
+    audio, no loop and no switching between recordings, so nothing can make a seam.
+    The octave below is generated from the SAME oscillator (exactly half its frequency, same vibrato): its
+    harmonics that fall on the main note's always add up the same way, never beating, and it stays one note."""
+
+    NFFT = 1024         # noise frames (50 % overlap, sqrt-Hann: constant level)
+
+    def __init__(self, inst, seed):
+        self.inst = inst
+        rng = np.random.default_rng(seed)
+        self.phase = rng.uniform(0, 2 * np.pi, inst.H)       # main note's harmonics
+        self.phase_low = rng.uniform(0, 2 * np.pi, inst.H)   # octave below: same oscillator, half speed
+        self.rng = rng
+        self.prev = None
+        self.ntail = np.zeros(self.NFFT // 2)
+        self.win = np.sqrt(np.hanning(self.NFFT + 1)[:-1])
+        self.fr = np.fft.rfftfreq(self.NFFT, 1 / SR)
+
+    def _bank(self, phase, h, base, lev_a, lev_b, f0, n):
+        top_a = np.clip((21000.0 - h * f0[0]) / 3000.0, 0.0, 1.0)     # fade out near the top, never a click
+        top_b = np.clip((21000.0 - h * f0[-1]) / 3000.0, 0.0, 1.0)
+        ok = (top_a > 0) | (top_b > 0)
+        ramp = (np.arange(1, n + 1) / n)[None, :]
+        lev = (lev_a[ok, None] + (lev_b - lev_a)[ok, None] * ramp) * (top_a[ok, None] + (top_b - top_a)[ok, None] * ramp)
+        return np.sum(lev * np.sin(phase[ok, None] + h[ok, None] * base[None, :]), axis=0)
+
+    def render(self, midi, pos, octave):
+        """midi: per-sample pitch (float); pos: where in the measurements (see ContinuousCello.measures)."""
+        n = len(midi)
+        inst = self.inst
+        mid = float(midi[n // 2])
+        amp, vib, noise = inst.measures(mid, pos)
+        low = inst.measures(mid - 12, pos)[0] if octave else np.zeros_like(amp)
+        prev_amp, prev_low = (amp, low) if self.prev is None else self.prev
+        self.prev = (amp, low)
+        f0 = 440.0 * 2 ** ((midi - 69) / 12) * vib
+        h = np.arange(1, inst.H + 1).astype(float)
+        base = np.cumsum(2 * np.pi * f0 / SR)
+        sig = self._bank(self.phase, h, base, prev_amp, amp, f0, n)
+        self.phase = (self.phase + h * base[-1]) % (2 * np.pi)
+        if octave:
+            sig = (sig + self._bank(self.phase_low, h, base / 2, prev_low, low, f0 / 2, n)) * 0.71
+            self.phase_low = (self.phase_low + h * base[-1] / 2) % (2 * np.pi)
+        # bow noise: white noise shaped to the measured band levels, overlap-added (never a block edge)
+        g = np.interp(np.log(np.maximum(self.fr, 1.0)), np.log(inst.band_centres), noise)
+        frame_n = np.fft.irfft(np.fft.rfft(self.rng.standard_normal(self.NFFT)) * g, self.NFFT) * self.win
+        out = np.zeros(n)
+        k = min(n, self.NFFT // 2)
+        out[:k] = self.ntail[:k] + frame_n[:k]
+        self.ntail = frame_n[self.NFFT // 2:]
+        return sig + out
+
+
+class GlissVoice:
+    """One continuous bowed string that slides between notes (glissando) instead of jumping, made live from
+    the cello's measurements (_CelloLine), with the same line an octave lower. After the attack, every note's
+    clean stretch is read forward and back again and again; the position is a fraction (0..1) of each note's
+    own stretch, so sliding to a note whose stretch is shorter never makes the position jump.
+    Live control: set_pitch(midi as a float) and set_bow(True/False)."""
+
+    GLIDE = 0.06        # s, how fast the pitch follows the dot (portamento)
+    ATTACK = 0.012      # s, the measurements carry their own bow attack
+    RELEASE = 0.18      # s, lifting the bow
+    NEW_STROKE = 0.25   # s of silence before the next bow starts with an attack again
+
+    def __init__(self, inst, midi, bow=False, live=False):
+        self.inst = inst
+        self.target = self.pitch = float(midi)
+        self.bow = bow      # notes the app plays by itself (band, automatic) start bowed and stop on release
+        # the dot window's voice lives as long as the window: "all off" (start/stop/jump, other windows)
+        # only lifts the bow, and the engine never drops it to make room (audio.Engine keeps .persistent)
+        self.live = live
+        self.persistent = live
+        self.closed = False
+        self.done = False
+        self.env = 0.0
+        self.silent = 1e9   # seconds the voice has been silent
+        self.att = 0.0      # frames into the attack (until inst.sustain_from)
+        self.u = 0.0        # then: fraction of the clean stretch, going back and forth
+        self.dir = 1.0
+        self.line = _CelloLine(inst, 1)
+
+    def set_pitch(self, midi):
+        self.target = float(midi)
+
+    def set_bow(self, on):
+        self.bow = bool(on)
+
+    def release(self):  # note off / all off
+        self.bow = False
+        if not self.live:
+            self.closed = True
+
+    def close(self):  # the dot window is closing: let the sound fade and end the voice
+        self.live = self.persistent = False
+        self.release()
+
+    def _pos(self):
+        return ("attack", self.att) if self.att < self.inst.sustain_from else ("sustain", self.u)
+
+    def _advance(self, n):
+        inst = self.inst
+        frames = n / SR * inst.fps
+        if self.att < inst.sustain_from:
+            self.att += frames
+            return
+        length = max(1.0, inst.stretch_for(self.pitch))          # frames of this pitch's clean stretch
+        self.u += self.dir * frames / length
+        if self.u >= 1.0:
+            self.u, self.dir = 2.0 - self.u, -1.0
+        elif self.u <= 0.0:
+            self.u, self.dir = -self.u, 1.0
+
+    def render(self, n):
+        t = np.arange(1, n + 1) / SR
+        k = 1.0 - np.exp(-t / self.GLIDE)
+        p = self.pitch + (self.target - self.pitch) * k
+        self.pitch = float(p[-1])
+        goal = 1.0 if self.bow else 0.0
+        tau = self.ATTACK if self.bow else self.RELEASE
+        env = goal + (self.env - goal) * np.exp(-t / tau)
+        if self.bow and self.silent >= self.NEW_STROKE:   # a new stroke after a real silence
+            self.att, self.u, self.dir = 0.0, 0.0, 1.0
+        self.env = float(env[-1])
+        if self.env < 1e-3 and not self.bow:
+            self.silent += n / SR
+            if self.env < 1e-4:
+                if self.closed:
+                    self.done = True
+                return np.zeros(n)
+        else:
+            self.silent = 0.0
+        pos = self._pos()
+        self._advance(n)
+        return self.line.render(p, pos, self.inst.octave_below) * env * self.inst.level
+
+
+class ContinuousCello(Instrument):
+    """Played with a dot on the screen (ContinuousPlayWindow in app.py): up = higher, down = lower, sliding."""
+    id = "cello_continuo"
+    name = "Continuous cello (glissando)"
+    kind = "continuous"
+    description = "Bowed cello that slides between notes: move the dot up/down, hold Space or the button to bow."
+    color = "#a0522d"
+    info = {
+        "Family": "Chordophone, bowed (made live from measurements)",
+        "Playing": "A dot on the screen: up = higher, down = lower; the sound slides between notes",
+        "Bow": "Always on while the theme plays; stopped, Space or a click switch it on and off",
+        "Sound": "samples/cello/parametros.npz: vibrato, harmonics and bow noise measured from the Online "
+                 "Sequencer cello (numbers only), played by oscillators that never restart",
+        "Octave": "Every note also sounds an octave lower",
+    }
+    level = 1.18     # measured: cello : amp guitar = 1.42 : 1.08, the proportion of the Online Sequencer mix
+    octave_below = True
+
+    def __init__(self):
+        self.loaded = False
+
+    def _load(self):
+        if self.loaded:
+            return
+        self.loaded = True
+        try:
+            d = np.load(os.path.join(CELLO_DIR, "parametros.npz"))
+            self.vib = d["vib"].astype(np.float32)          # (notes, frames)
+            self.amp = d["amp"].astype(np.float32)          # (notes, harmonics, frames)
+            self.noise = d["noise"].astype(np.float32)      # (notes, bands, frames)
+            self.first = int(d["first_midi"])
+            self.fps = float(d["fps"])
+            self.n_frames = self.vib.shape[1]
+            self.sustain_from = int(float(d["attack_s"]) * self.fps)
+            # where each note's clean stretch ends (before the recordings' bow change)
+            self.sustain_end = (d["sustain_end"].astype(int) if "sustain_end" in d
+                                else np.full(self.vib.shape[0], self.n_frames - 1))
+            bands = d["bands"]
+            self.band_centres = np.sqrt(bands[:-1] * bands[1:])
+            print("continuous cello: loaded measurements of", self.vib.shape[0], "notes", flush=True)
+        except Exception as exc:  # no file: a plain steady string so the app still works
+            print(f"continuous cello: no measurements ({exc})", flush=True)
+            self.first, self.fps, self.n_frames, self.sustain_from = 36, 100.0, 240, 80
+            self.vib = np.ones((1, 240), np.float32)
+            self.amp = np.tile((0.05 / np.arange(1, 171))[None, :, None], (1, 1, 240)).astype(np.float32)
+            self.noise = np.zeros((1, 32, 240), np.float32)
+            self.band_centres = np.geomspace(50, 18000, 32)
+            self.sustain_end = np.array([239])
+        self.H = self.amp.shape[1]
+
+    def stretch_for(self, midi):
+        """Length (frames) of the clean stretch at this pitch, blended between the two nearest notes."""
+        x = float(np.clip(midi - self.first, 0, len(self.sustain_end) - 1))
+        j = min(int(x), len(self.sustain_end) - 2) if len(self.sustain_end) > 1 else 0
+        w = x - j if len(self.sustain_end) > 1 else 0.0
+        e = self.sustain_end[j] * (1 - w) + (self.sustain_end[j + 1] * w if w else 0.0)
+        return float(max(e, self.sustain_from + 10) - self.sustain_from)
+
+    def measures(self, midi, pos):
+        """(harmonic levels, vibrato ratio, noise band levels) at any pitch, blended between the two nearest
+        measured notes. pos = ("attack", frame) or ("sustain", fraction 0..1 of EACH note's own clean
+        stretch), so a note with a shorter stretch is read at the same relative point: nothing jumps."""
+        x = float(np.clip(midi - self.first, 0, self.vib.shape[0] - 1))
+        j = min(int(x), self.vib.shape[0] - 2) if self.vib.shape[0] > 1 else 0
+        w = x - j if self.vib.shape[0] > 1 else 0.0
+
+        def frame_of(jj):
+            if pos[0] == "attack":
+                return float(pos[1])
+            end = max(self.sustain_end[jj], self.sustain_from + 10)
+            return self.sustain_from + float(pos[1]) * (end - self.sustain_from)
+
+        def at(arr, jj):
+            f = float(np.clip(frame_of(jj), 0, self.n_frames - 1))
+            i = min(int(f), self.n_frames - 2)
+            u = f - i
+            return arr[jj][..., i] * (1 - u) + arr[jj][..., i + 1] * u
+
+        def blend(arr):
+            a = at(arr, j)
+            return a * (1 - w) + at(arr, j + 1) * w if w else a
+        return blend(self.amp), float(blend(self.vib)), blend(self.noise)
+
+    def voice(self, freq=None, midi=48.0, **_):
+        self._load()
+        if freq is not None:  # a note from the theme (band / automatic / keys): bowed until released
+            return GlissVoice(self, 69 + 12 * np.log2(freq / 440.0), bow=True)
+        return GlissVoice(self, midi, live=True)  # the dot window drives pitch and bow itself
+
+
 _SYNTH_GUITAR = DistortedGuitar()  # AmpGuitar falls back to it when its files are missing
 
 INSTRUMENTS = [Piano(), CleanGuitar(), LeadGuitar(), Vocal(), DistortedGuitar(), AmpGuitar(), BassGuitar(), DrumKit(),
                Strings(), StringEnsemble(), TremoloStrings(), Brass(), Flute(),
-               Pad(), Organ(), PluckedString(), ElectricPiano(), Clarinet()]
+               Pad(), Organ(), PluckedString(), ElectricPiano(), Clarinet(), ContinuousCello()]

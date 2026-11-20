@@ -1607,8 +1607,9 @@ class PlayChooser(tk.Toplevel):
         if self._uses_patterns(p):
             PatternWindow(self, self.engine, p, bpm=bpm, mode=self.mode_var.get())
             return
-        PlayWindow(self, self.engine, p, song=self.song, track=self._selected_track() if self.song else None,
-                   auto=auto, bpm=bpm, band=self.mode_var.get() == "band")
+        win = ContinuousPlayWindow if instrument_by_id(p["sound"]).kind == "continuous" else PlayWindow
+        win(self, self.engine, p, song=self.song, track=self._selected_track() if self.song else None,
+            auto=auto, bpm=bpm, band=self.mode_var.get() == "band")
 
     def _play_several(self, ps, bpm):
         """One window per instrument on one shared clock; Tab brings the next one to the front.
@@ -1633,7 +1634,8 @@ class PlayChooser(tk.Toplevel):
                               plays_band=p is leader)
             else:
                 track = self._profile_track(p) if self.song is not None else None
-                PlayWindow(self, self.engine, p, song=self.song, track=track, auto=mode == "auto", bpm=bpm,
+                win = ContinuousPlayWindow if instrument_by_id(p["sound"]).kind == "continuous" else PlayWindow
+                win(self, self.engine, p, song=self.song, track=track, auto=mode == "auto", bpm=bpm,
                            band=p is leader, session=session,
                            label="Práctica con banda" if mode == "band" else None)
         session.show(0)
@@ -3109,6 +3111,224 @@ def band_events(menu):
                           pitch, idx))
     notes.sort()
     return parts, notes
+
+
+class ContinuousPlayWindow(PlayWindow):
+    """The glissando cello: the same window as any instrument (theme, shared clock, network room, drum
+    sections, Automático / Práctica con banda), but played with a dot instead of keys.
+    The notes come from the right in rows by pitch (higher rows = higher notes), one row per note this part
+    plays, at its exact octave. A dot on the line follows the pointer up and down; between two rows the
+    pitch slides, and near a row it sits exactly on that note. While the theme plays the bow never lifts;
+    stopped, Space or a click switch it on and off."""
+
+    X_HIT = 0.22     # the play line, as a fraction of the width
+    SNAP = 0.25      # within a quarter of a row from a note, the pitch is exactly that note
+
+    def __init__(self, *args, **kwargs):
+        self.gvoice = None
+        self.bowing = False
+        self.dot_y = None
+        super().__init__(*args, **kwargs)
+        self.gvoice = self.ins.voice(midi=self.rows[len(self.rows) // 2])
+        self.gtag = ("continuo", id(self))
+        self.engine.voice_on(self.gtag, self.gvoice)
+
+    # ---- rows: the notes of this part ----------------------------------------------------------------
+    @property
+    def rows(self):
+        """One row per note the part really plays (from the theme's MIDI), not the instrument's saved keys."""
+        if getattr(self, "_rows", None) is None:
+            evs = getattr(self, "src_auto", None) or self.auto_events
+            notes = sorted({p for _on, _off, p in evs}) or sorted({m for m in self.slot_midis if m is not None})
+            self._rows = notes or [48]
+        return self._rows
+
+    def _row_h(self):
+        return max(self.highway.winfo_height(), 200) / len(self.rows)
+
+    def _y_of_row(self, i):
+        h = max(self.highway.winfo_height(), 200)
+        return h - (i + 0.5) * self._row_h()
+
+    def _pitch_at(self, y):
+        rows = self.rows
+        r = (max(self.highway.winfo_height(), 200) - y) / self._row_h() - 0.5
+        r = min(max(r, 0.0), len(rows) - 1.0)
+        i = min(int(r), len(rows) - 2) if len(rows) > 1 else 0
+        if len(rows) == 1:
+            return float(rows[0])
+        frac = r - i
+        if frac < self.SNAP:
+            frac = 0.0
+        elif frac > 1 - self.SNAP:
+            frac = 1.0
+        else:
+            frac = (frac - self.SNAP) / (1 - 2 * self.SNAP)
+        return rows[i] + (rows[i + 1] - rows[i]) * frac
+
+    # ---- the highway, sideways --------------------------------------------------------------------
+    def _build_highway(self, parent):
+        self.lanes = {}
+        rows = self.rows
+        for slot, m in enumerate(self.slot_midis):
+            if m is not None and m in rows:
+                self.lanes[slot] = rows.index(m)
+        box = ttk.Frame(parent, style="Panel.TFrame", padding=6)
+        box.pack(fill="both", expand=True, pady=(8, 8))
+        self.highway = tk.Canvas(box, width=self.HW_W, height=self.HW_H, bg="#16171b", highlightthickness=0,
+                                 cursor="none")
+        self.highway.pack(fill="both", expand=True)
+        self.highway.bind("<Motion>", self._dot_move)
+        self.highway.bind("<ButtonPress-1>", lambda e: (self._dot_move(e), self._toggle_bow()))
+        self.max_dur = max((off - on for on, off, _ in self.auto_events), default=1.0)
+
+    def _hw_build_static(self, w, h):
+        hw = self.highway
+        hw.delete("all")
+        self._hw_pool = []
+        self._hw_keys = {}
+        rows, rh = self.rows, self._row_h()
+        x_hit = w * self.X_HIT
+        for i, m in enumerate(rows):
+            y = self._y_of_row(i)
+            black = m % 12 in SHARPS
+            hw.create_rectangle(0, y - rh / 2, w, y + rh / 2, width=0, tags="lanes",
+                                fill="#101114" if black else ("#1b1c21" if i % 2 == 0 else "#16171b"))
+            hw.create_line(0, y, w, y, fill="#2c2e36", tags="lanes")
+            hw.create_text(8, y, text=note_text(m), fill=MUTED, anchor="w", tags="keys",
+                           font=("TkDefaultFont", max(8, min(13, int(rh * 0.45))), "bold"))
+        hw.create_line(x_hit, 0, x_hit, h, fill="#f0f0f0", width=3, tags="keys")
+        r = 13
+        y = self.dot_y if self.dot_y is not None else h / 2
+        self._dot = hw.create_oval(x_hit - r, y - r, x_hit + r, y + r, outline=self.ins.color, width=3,
+                                   fill=self.ins.color if self.bowing else "", tags="dot")
+        self._pitch_txt = hw.create_text(w - 10, 10, text="", fill=FG, anchor="ne", tags="dot",
+                                         font=("TkDefaultFont", 16, "bold"))
+
+    def _draw_highway(self, now_song):
+        hw = self.highway
+        if hw is None:
+            return
+        w = max(hw.winfo_width(), 200)
+        h = max(hw.winfo_height(), 200)
+        sig = (w, h, tuple(self.rows))
+        if sig != getattr(self, "_hw_sig", None):
+            self._hw_build_static(w, h)
+            self._hw_sig = sig
+        x_hit = w * self.X_HIT
+        span = self.HW_AHEAD * (self.speed if self.running else self._speed())
+        pps = (w - x_hit) / span
+        rh = self._row_h()
+        lo = bisect_left(self.auto_starts, now_song - self.max_dur)
+        hi = bisect_left(self.auto_starts, now_song + span)
+        boxes = []
+        for on, off, pitch in self.auto_events[lo:hi]:
+            if off < now_song or pitch not in self.rows:
+                continue
+            y = self._y_of_row(self.rows.index(pitch))
+            x_on = x_hit + (on - now_song) * pps
+            x_off = max(x_on + 6, x_hit + (off - now_song) * pps - 2)
+            fill = "#ffffff" if on <= now_song < off else self.ins.color
+            boxes.append((max(x_hit, x_on), y - rh * 0.3, min(w, x_off), y + rh * 0.3, fill))
+        pool = self._hw_pool
+        while len(pool) < len(boxes):
+            pool.append([hw.create_rectangle(0, 0, 0, 0, width=0, state="hidden", tags="note"), None, False])
+            hw.tag_lower(pool[-1][0], "keys")
+            hw.tag_raise(pool[-1][0], "lanes")
+        for item, box in zip(pool, boxes):
+            hw.coords(item[0], *box[:4])
+            if item[1] != box[4]:
+                hw.itemconfig(item[0], fill=box[4])
+                item[1] = box[4]
+            if not item[2]:
+                hw.itemconfig(item[0], state="normal")
+                item[2] = True
+        for item in pool[len(boxes):]:
+            if item[2]:
+                hw.itemconfig(item[0], state="hidden")
+                item[2] = False
+        hw.tag_raise("dot")
+        self._keep_voice()
+
+    def _keep_voice(self):
+        """Every frame: the voice must exist and follow what the player is doing (an "all off" from a start,
+        a stop or another window only lifts its bow; if it were ever gone, make it again)."""
+        v = self.gvoice
+        if v is None:
+            return
+        if v.done or not any(x is v for _, x in self.engine.voices):
+            self.gvoice = v = self.ins.voice(midi=v.target)
+            self.engine.voice_on(self.gtag, v)
+        # in the song the bow never lifts: while the theme plays the cello sounds all the time and the player
+        # only moves the dot; stopped, Space or the button bows (to practise)
+        want = self.running or self.bowing
+        if v.bow != want:
+            v.set_bow(want)
+        if hasattr(self, "_dot"):
+            self.highway.itemconfig(self._dot, fill=self.ins.color if want else "")
+
+    def _hw_paint_key(self, slot, on):
+        pass  # no keyboard strip: the dot shows what sounds
+
+    # ---- playing: the dot and the bow ---------------------------------------------------------------
+    def _dot_move(self, event):
+        h = max(self.highway.winfo_height(), 200)
+        self.dot_y = min(max(0, event.y), h)
+        m = self._pitch_at(self.dot_y)
+        if self.gvoice is not None:
+            self.gvoice.set_pitch(m)
+        x_hit, r = max(self.highway.winfo_width(), 200) * self.X_HIT, 13
+        if hasattr(self, "_dot"):
+            self.highway.coords(self._dot, x_hit - r, self.dot_y - r, x_hit + r, self.dot_y + r)
+            near = int(round(m))
+            cents = int(round((m - near) * 100))
+            self.highway.itemconfig(self._pitch_txt, text=note_text(near) + (f" {cents:+d}" if cents else ""))
+
+    def _bow(self, on):
+        if on == self.bowing:
+            return
+        self.bowing = on
+        self._keep_voice()  # while the theme plays the bow stays down whatever Space / the button do
+
+    def _toggle_bow(self):
+        """Space / a click switch the bow on or off (stopped only: while the theme plays it is always on).
+        A held key sends repeats (and on some systems release + press pairs): presses closer than 0.35 s to
+        the previous one are those repeats, not a new press, so holding the key never flickers the sound."""
+        now = time.monotonic()
+        last, self._last_toggle = getattr(self, "_last_toggle", 0.0), now
+        if now - last > 0.35:
+            self._bow(not self.bowing)
+
+    def _hw_click(self, event):
+        self._toggle_bow()
+
+    def _hw_release(self, _event):
+        pass
+
+    def _on_press(self, event):
+        k = KEY_ALIASES.get(event.keysym.lower(), event.keysym.lower())
+        if k == "space" and not (event.state & 0x4):
+            self._toggle_bow()
+            return "break"
+        if k in self.keymap:
+            return "break"  # no note keys: the dot plays
+        return super()._on_press(event)
+
+    def _on_release(self, event):
+        k = KEY_ALIASES.get(event.keysym.lower(), event.keysym.lower())
+        if k == "space":
+            return "break"   # the bow is a switch: letting go of Space does nothing
+        return super()._on_release(event)
+
+    def _release_all(self):
+        self._bow(False)
+        super()._release_all()
+
+    def teardown(self):
+        if self.gvoice is not None:
+            self.gvoice.close()
+            self.engine.note_off(self.gtag)
+        super().teardown()
 
 
 class ListenWindow(tk.Toplevel):

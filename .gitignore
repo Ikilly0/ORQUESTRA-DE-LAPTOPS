@@ -20,3 +20,5 @@ dist/
 *.spec
 # guitarra con amplificador: notas y gabinete propios, captura NAM GPL v3 (ver samples/guitarra_amp/LICENCIA-amp.txt)
 !samples/guitarra_amp/*.wav
+# cello continuo: solo las mediciones (parametros.npz); las notas de audio viejas ya no se usan
+samples/cello/notas.*
