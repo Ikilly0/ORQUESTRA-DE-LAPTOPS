@@ -22,3 +22,5 @@ dist/
 !samples/guitarra_amp/*.wav
 # cello continuo: solo las mediciones (parametros.npz); las notas de audio viejas ya no se usan
 samples/cello/notas.*
+# batería por secciones: audio real de la grabación, limpio (herramientas-audio/revision/limpiar_secciones.py)
+!songs/*.secciones/*.wav
