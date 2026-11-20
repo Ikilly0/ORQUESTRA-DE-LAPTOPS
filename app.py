@@ -3360,13 +3360,17 @@ class ContinuousPlayWindow(PlayWindow):
 
 
 class DroneWindow(ContinuousPlayWindow):
-    """Menacing Hum: a drone that sounds as long as the window is open. The rows are notes (higher = higher);
-    a click (or arrows up/down) picks the note at once, and the knob on the right (mouse wheel, + / -, or the
-    number keys 1..9, 0 = full) sets the volume, from silence to the song's loudest. Same theme, shared clock and
-    room as any other instrument: the part's notes still come from the right."""
+    """Menacing Hum: a drone that sounds as long as the window is open. On the left, one key per note (A, A#, B,
+    C ...: discrete notes, nothing in between); a click on a key (or its row, or arrows up/down) picks it at once.
+    The thick volume bar on the right (click or drag anywhere on it, mouse wheel, + / -, or the number keys
+    1..9, 0 = full) sets the volume, from silence to the song's loudest. Same theme, shared clock and room as any
+    other instrument: the part's notes still come from the right towards the keys."""
 
     LOW, HIGH = 21, 48     # rows when the part has no notes: A0 .. C3
     STEP = 0.05            # one wheel notch / + / -
+    KEY_W = 120            # width of the column of note keys (px)
+    BAR_W = 120            # width of the volume bar (px)
+    HANDLE_H = 46          # height of its handle (px)
 
     def __init__(self, *args, **kwargs):
         self.level_var = None
@@ -3395,8 +3399,9 @@ class DroneWindow(ContinuousPlayWindow):
         tech = ttk.Frame(parent)
         tech.pack(fill="x", pady=(6, 0))
         self.palm_label = self.oct_label = None
-        ttk.Label(tech, text="Nota: clic en una fila (o ↑ / ↓)      Volumen: perilla de la derecha, rueda del "
-                             "mouse, + / −, teclas 1 … 9 (0 = 100 %)", style="BgMuted.TLabel").pack(side="left")
+        ttk.Label(tech, text="Nota: clic en una tecla (o ↑ / ↓)      Volumen: barra de la derecha (clic o "
+                             "arrastrar), rueda del mouse, + / −, teclas 1 … 9 (0 = 100 %)",
+                  style="BgMuted.TLabel").pack(side="left")
         self.edit_label = ttk.Label(tech, text="", style="BgMuted.TLabel")
         if self.band:
             bf = ttk.Frame(tech)
@@ -3413,26 +3418,54 @@ class DroneWindow(ContinuousPlayWindow):
         box.pack(fill="both", expand=True, pady=(8, 8))
         knob = ttk.Frame(box, style="Panel.TFrame", padding=(10, 0, 4, 0))
         knob.pack(side="right", fill="y")
-        ttk.Label(knob, text="Volumen", style="Panel.TLabel").pack(side="top")
+        ttk.Label(knob, text="Volumen", style="Panel.TLabel", font=("TkDefaultFont", 13, "bold")).pack(side="top")
         self.level_var = tk.DoubleVar(value=0.0)
-        self.level_txt = ttk.Label(knob, text="0 %", style="Panel.TLabel", font=("TkDefaultFont", 18, "bold"))
+        self.level_txt = ttk.Label(knob, text="0 %", style="Panel.TLabel", font=("TkDefaultFont", 20, "bold"))
         self.level_txt.pack(side="bottom", pady=(6, 0))
-        sc = ttk.Scale(knob, from_=1.0, to=0.0, orient="vertical", variable=self.level_var, takefocus=False,
-                       command=lambda v: self._set_level(float(v)))
-        sc.pack(side="top", fill="y", expand=True, pady=6)
-        sc.bind("<ButtonRelease-1>", self._refocus)
+        # the volume bar: a thick canvas; a click anywhere jumps there, dragging follows the mouse
+        self.bar = tk.Canvas(knob, width=self.BAR_W, bg=PANEL, highlightthickness=0, cursor="hand2")
+        self.bar.pack(side="top", fill="y", expand=True, pady=6)
+        self.bar.bind("<ButtonPress-1>", self._bar_drag)
+        self.bar.bind("<B1-Motion>", self._bar_drag)
+        self.bar.bind("<ButtonRelease-1>", self._refocus)
+        self.bar.bind("<Configure>", lambda _e: self._draw_bar())
         self.highway = tk.Canvas(box, width=self.HW_W, height=self.HW_H, bg="#16171b", highlightthickness=0)
         self.highway.pack(side="left", fill="both", expand=True)
-        self.highway.bind("<ButtonPress-1>", self._pick)
-        self.highway.bind("<B1-Motion>", self._pick)
-        for w in (self, self.highway):
+        self.highway.bind("<ButtonPress-1>", self._pick)   # a click: one note (no sliding while dragging)
+        for w in (self, self.highway, self.bar):
             w.bind("<MouseWheel>", self._wheel)
             w.bind("<Button-4>", lambda e: self._nudge(+self.STEP))
             w.bind("<Button-5>", lambda e: self._nudge(-self.STEP))
         self.max_dur = max((off - on for on, off, _ in self.auto_events), default=1.0)
 
     def _hw_build_static(self, w, h):
-        super()._hw_build_static(w, h)
+        """Rows with a gap between them and a column of keys on the left: one key per note."""
+        hw = self.highway
+        hw.delete("all")
+        self._hw_pool = []
+        self._hw_keys = {}
+        rows, rh = self.rows, self._row_h()
+        self.X_HIT = (self.KEY_W + 6) / max(w, 1)          # notes arrive at the keys
+        gap = 1 if rh < 14 else 2
+        for i, m in enumerate(rows):
+            y = self._y_of_row(i)
+            hw.create_rectangle(self.KEY_W + 6, y - rh / 2 + gap, w, y + rh / 2 - gap, width=0, tags="lanes",
+                                fill="#101114" if m % 12 in SHARPS else "#1b1c21")
+        for i, m in enumerate(rows):
+            y = self._y_of_row(i)
+            hw.create_rectangle(2, y - rh / 2 + gap, self.KEY_W, y + rh / 2 - gap, width=1, outline="#4a4c55",
+                                fill="#26272d" if m % 12 in SHARPS else "#3a3c45", tags="keys")
+        # the selected key (filled while it sounds), under the key names
+        self._dot = hw.create_rectangle(0, 0, 0, 0, outline="#ffffff", width=3, fill="", tags=("keys", "dot"))
+        size = max(8, min(15, int(rh * 0.55)))
+        for i, m in enumerate(rows):
+            hw.create_text(12, self._y_of_row(i), text=note_text(m), fill=FG, anchor="w", tags=("keys", "dot"),
+                           font=("TkDefaultFont", size, "bold"))
+        x_hit = w * self.X_HIT
+        hw.create_line(x_hit, 0, x_hit, h, fill="#f0f0f0", width=2, tags="keys")
+        self._pitch_txt = hw.create_text(w - 10, 10, text="", fill=FG, anchor="ne", tags="dot",
+                                         font=("TkDefaultFont", 18, "bold"))
+        hw.tag_raise("dot")
         self._place_dot()
 
     # ---- note -----------------------------------------------------------------------------------------
@@ -3440,6 +3473,7 @@ class DroneWindow(ContinuousPlayWindow):
         h = max(self.highway.winfo_height(), 200)
         r = (h - event.y) / self._row_h() - 0.5
         self._set_note(self.rows[int(min(max(round(r), 0), len(self.rows) - 1))])
+        self._refocus()
 
     def _set_note(self, m):
         self.note = m
@@ -3451,9 +3485,9 @@ class DroneWindow(ContinuousPlayWindow):
         if not hasattr(self, "_dot") or self.note not in self.rows:
             return
         y = self._y_of_row(self.rows.index(self.note))
-        x_hit, r = max(self.highway.winfo_width(), 200) * self.X_HIT, 13
+        rh = self._row_h()
         self.dot_y = y
-        self.highway.coords(self._dot, x_hit - r, y - r, x_hit + r, y + r)
+        self.highway.coords(self._dot, 2, y - rh / 2 + 1, self.KEY_W, y + rh / 2 - 1)
         self.highway.itemconfig(self._pitch_txt, text=note_text(self.note))
 
     # ---- volume --------------------------------------------------------------------------------------
@@ -3463,9 +3497,40 @@ class DroneWindow(ContinuousPlayWindow):
             self.level_var.set(x)
         if getattr(self, "level_txt", None) is not None:
             self.level_txt.configure(text=f"{int(round(x * 100))} %")
+        self._draw_bar()
         if self.gvoice is not None:
             self.gvoice.set_level(x)
         self._keep_voice()
+
+    def _bar_geom(self):
+        h = max(self.bar.winfo_height(), 120)
+        return self.HANDLE_H / 2 + 4, h - self.HANDLE_H / 2 - 4      # top, bottom of the handle's centre
+
+    def _bar_drag(self, event):
+        top, bottom = self._bar_geom()
+        self._set_level((bottom - event.y) / max(bottom - top, 1))
+        return "break"
+
+    def _draw_bar(self):
+        bar = getattr(self, "bar", None)
+        if bar is None:
+            return
+        x = self.level_var.get() if self.level_var is not None else 0.0
+        w = max(bar.winfo_width(), self.BAR_W)
+        top, bottom = self._bar_geom()
+        y = bottom - x * (bottom - top)
+        bar.delete("all")
+        mid, half = w / 2, w * 0.22
+        bar.create_rectangle(mid - half, top, mid + half, bottom, fill="#16171b", outline="#4a4c55", width=2)
+        if x > 0:
+            bar.create_rectangle(mid - half, y, mid + half, bottom, fill=self.ins.color, width=0)
+        for k in range(11):                                  # marks every 10 %
+            yy = bottom - k / 10 * (bottom - top)
+            bar.create_line(mid + half + 4, yy, w - 4, yy, fill="#6b6e78", width=2 if k % 5 == 0 else 1)
+        hh = self.HANDLE_H / 2
+        bar.create_rectangle(4, y - hh, w - 4, y + hh, fill="#e8e8ea", outline="#ffffff", width=2)
+        for d in (-8, 0, 8):                                 # grip lines
+            bar.create_line(18, y + d, w - 18, y + d, fill="#8a8c95", width=2)
 
     def _nudge(self, d):
         self._set_level((self.level_var.get() if self.level_var else 0.0) + d)

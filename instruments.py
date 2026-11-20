@@ -1381,8 +1381,8 @@ class HumVoice:
     """One held note that never stops while its window is open; the player picks the note and turns the volume
     like a knob. The sound IS the file Alvaro chose, "Separado - ZUMBIDO GRAVE solo (de la cancion)": the low
     hum of The World Looks White as it is in the song (samples/menacing_hum/parametros.npz "full", made by
-    herramientas-audio/menacing_hum/zumbido_archivo.py), in C1. Turned on from silence it plays the file from
-    its start (it rises like in the song); at the end of its loudest part it keeps repeating that last stretch.
+    herramientas-audio/menacing_hum/zumbido_archivo.py), in C1. Turned on from silence it starts at 9 s of the
+    file (the part Alvaro approved); at the end of its loudest part it keeps repeating that last stretch.
     Other notes play it faster or slower (like a sampler); picking another note changes it at once (no
     glissando). Live control: set_note(midi) and set_level(0..1)."""
 
@@ -1394,7 +1394,7 @@ class HumVoice:
         self.level_target = self.level = float(level)
         self.live = self.persistent = live
         self.closed = self.done = False
-        self.pos = 0.0                                  # where in the loop (samples of the recording)
+        self.pos = float(inst.start_from)               # where in the recording (samples)
 
     @property
     def target(self):
@@ -1422,7 +1422,7 @@ class HumVoice:
         if self.level < 1e-4 and self.level_target == 0.0:
             if self.closed:
                 self.done = True
-            self.pos = 0.0                              # next time it starts the file from the beginning
+            self.pos = float(self.inst.start_from)      # next time it starts again at the approved part
             return np.zeros(n)
         full, a = self.inst.full, self.inst.loop_from
         L = len(full)
@@ -1466,6 +1466,7 @@ class MenacingHum(Instrument):
             d = np.load(os.path.join(_hum_dir(), "parametros.npz"))
             self.full = d["full"].astype(np.float32)             # the chosen file: the song's low hum (C1)
             self.loop_from = int(d["loop_from"])                 # where it goes back to after the end
+            self.start_from = int(d["start_from"]) if "start_from" in d else 0   # where it starts
             self.loop_midi = float(round(12 + 12 * np.log2(float(d["loop_f0"]) / 16.3516)))   # C1: plays at its own speed
             self.level = float(d["level_loop"]) if "level_loop" in d else 1.0
             print("menacing hum: loaded the hum of the song", flush=True)
@@ -1474,6 +1475,7 @@ class MenacingHum(Instrument):
             t = np.arange(SR) / SR
             self.full = (0.3 * np.sin(2 * np.pi * 33 * t) + 0.2 * np.sin(2 * np.pi * 66 * t)).astype(np.float32)
             self.loop_from = 0
+            self.start_from = 0
             self.loop_midi = 24.0
             self.level = 1.0
 
